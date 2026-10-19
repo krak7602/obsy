@@ -1,0 +1,25 @@
+{
+  "name": "@obsy/merge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Markdown-aware three-way merge for obsy",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "node-diff3": "3.2.1"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

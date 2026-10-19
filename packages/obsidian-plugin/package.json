@@ -1,0 +1,19 @@
+{
+  "name": "@obsy/obsidian-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "obsy Obsidian plugin. The manifest lives at the repository root.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "rolldown -c rolldown.config.ts",
+    "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline"
+  },
+  "devDependencies": {
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
+    "obsidian": "catalog:",
+    "rolldown": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
