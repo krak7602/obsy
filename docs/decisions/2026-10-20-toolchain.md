@@ -24,6 +24,7 @@ Options considered:
 | Node version | mise (`mise.toml`), Node 24 LTS |
 | Packages and workspaces | pnpm 12, pinned in `packageManager` and `mise.toml`. Shared versions use the pnpm catalog. |
 | Format, lint, type check | Vite+ `vp check` (Oxfmt, Oxlint, and type checks through tsgolint) |
+| Obsidian review rules | ESLint 9 with `eslint-plugin-obsidianmd`, in the plugin package only, on TypeScript 6 |
 | Tests | Vite+ `vp test` (Vitest 5). Tests import from `vite-plus/test`. |
 | Library packages | Vite+ `vp pack` (tsdown) |
 | Plugin bundle | Rolldown, writing one CommonJS `dist/main.js` with `obsidian`, `electron`, `@codemirror/*`, and `@lezer/*` external |
@@ -39,7 +40,7 @@ The commands are in the [development runbook](../runbooks/development.md).
 - pnpm's strict `node_modules` means a package sees only the dependencies it declares. This helps keep the core packages free of platform dependencies.
 - The base `tsconfig` has only ES libraries and no `@types/*`. A package must opt in to `dom` or Node types. The type check rejected `process` in the plugin package on the first run, which shows the boundary works.
 - One root `vite.config.ts` holds the lint, format, and test settings. Per-package `vite.config.ts` files hold only `pack` settings.
-- `eslint-plugin-obsidianmd` cannot run yet. It depends on typescript-eslint, which does not support TypeScript 7. This is open until phase 2 (see the [roadmap](../roadmap.md#open-questions)).
+- `eslint-plugin-obsidianmd` depends on typescript-eslint, which does not support TypeScript 7. The plugin package therefore runs it with ESLint on TypeScript 6, from the `obsidian-lint` pnpm catalog. The rest of the repository stays on TypeScript 7. Remove this second lint run when typescript-eslint supports TypeScript 7 and Oxlint can load the plugin.
 - Vite+ aliases `vite` to `@voidzero-dev/vite-plus-core`. Keep the `vite` and `vitest` overrides in `pnpm-workspace.yaml` equal to the installed Vite+ versions.
 
 ## Evidence
@@ -49,4 +50,5 @@ Read on 2026-10-19 and 2026-10-20 from the npm registry: pnpm 12.14.0, Bun 1.4.3
 - The Vite+ README says it wraps pnpm, npm, Yarn, or Bun. It documents the workspace overrides for pnpm.
 - The official [obsidian-sample-plugin](https://github.com/obsidianmd/obsidian-sample-plugin) builds with esbuild to a CommonJS `main.js`.
 - Observed locally on 2026-10-20: `vp check`, `vp test`, `vp pack`, and the Rolldown plugin build all passed on the scaffold. Loading `eslint-plugin-obsidianmd` 0.4.2 failed with "typescript-eslint does not support TS 7.0."
+- Observed locally on 2026-10-20, after adding the TypeScript 6 lint run: with a deliberately broken manifest (`id` and `description` containing "obsidian"), `validate-manifest` reported two errors; a temporary source file importing `node:fs` and using `globalThis` produced `no-nodejs-modules` and `no-global-this` warnings plus type-aware typescript-eslint errors. The real manifest and source pass.
 - Not yet verified: that Obsidian loads the Rolldown-built `main.js`. Verify this in phase 2 with a scratch vault.

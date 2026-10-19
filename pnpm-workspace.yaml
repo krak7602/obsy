@@ -9,6 +9,31 @@ catalog:
   typescript: 7.0.2
   vite-plus: 1.3.0
 
+# Obsidian review rules run on ESLint and typescript-eslint, which do not
+# support TypeScript 7 yet. Only the plugin package uses this catalog.
+catalogs:
+  obsidian-lint:
+    '@eslint/js': 9.39.5
+    '@eslint/json': 0.14.0
+    eslint: 9.39.5
+    eslint-plugin-obsidianmd: 0.4.2
+    globals: 17.13.0
+    typescript: 6.0.3
+    typescript-eslint: 8.72.0
+
+minimumReleaseAgeExclude:
+  - '@typescript-eslint/eslint-plugin@8.72.0'
+  - '@typescript-eslint/parser@8.72.0'
+  - '@typescript-eslint/project-service@8.72.0'
+  - '@typescript-eslint/scope-manager@8.72.0'
+  - '@typescript-eslint/tsconfig-utils@8.72.0'
+  - '@typescript-eslint/type-utils@8.72.0'
+  - '@typescript-eslint/types@8.72.0'
+  - '@typescript-eslint/typescript-estree@8.72.0'
+  - '@typescript-eslint/utils@8.72.0'
+  - '@typescript-eslint/visitor-keys@8.72.0'
+  - typescript-eslint@8.72.0
+
 overrides:
   vite@*: npm:@voidzero-dev/vite-plus-core@1.3.0 # Match the catalog vite-plus version
   vitest@*: 5.0.5 # Match the version from `vp toolchain vitest`
@@ -16,3 +41,4 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     vitest>vite: '*' # vite is aliased to vite-plus-core, whose version differs
+    eslint-plugin-obsidianmd>obsidian: '*' # The plugin pins an older obsidian peer

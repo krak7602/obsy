@@ -39,7 +39,7 @@ The research listed these questions. Some are now settled.
 | Whether `requestUrl` and `SecretStorage` behave on iOS as documented | Open; phase 0 spike. Neither the HTTP stack nor the storage backing is publicly specified. |
 | Whether R2 conditional creates are atomic under real races | Open; phase 0 spike and conformance suite |
 | Whether Obsidian loads the Rolldown-built `main.js` | Open; phase 2, in a scratch vault |
-| How to run `eslint-plugin-obsidianmd` review rules, given typescript-eslint does not support TypeScript 7 | Open; phase 2. Options: a separate ESLint run on TypeScript 6, or wait for support. |
+| How to run `eslint-plugin-obsidianmd` review rules, given typescript-eslint does not support TypeScript 7 | Settled: a separate ESLint run on TypeScript 6 in the plugin package ([toolchain](decisions/2026-10-20-toolchain.md)) |
 
 ### Risks
 

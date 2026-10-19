@@ -7,13 +7,21 @@
   "type": "module",
   "scripts": {
     "build": "rolldown -c rolldown.config.ts",
-    "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline"
+    "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline",
+    "lint:obsidian": "cd ../.. && eslint --max-warnings 0 --config packages/obsidian-plugin/eslint.config.mjs packages/obsidian-plugin/src manifest.json"
   },
   "devDependencies": {
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",
+    "@eslint/js": "catalog:obsidian-lint",
+    "@eslint/json": "catalog:obsidian-lint",
+    "eslint": "catalog:obsidian-lint",
+    "eslint-plugin-obsidianmd": "catalog:obsidian-lint",
+    "globals": "catalog:obsidian-lint",
     "obsidian": "catalog:",
     "rolldown": "catalog:",
+    "typescript": "catalog:obsidian-lint",
+    "typescript-eslint": "catalog:obsidian-lint",
     "vite-plus": "catalog:"
   }
 }

@@ -22,7 +22,8 @@ Run these from the repository root.
 
 | Command | Does |
 | --- | --- |
-| `pnpm run check` | Format check, lint, and type check (`vp check`) |
+| `pnpm run check` | Format check, lint, and type check (`vp check`), then the Obsidian review rules |
+| `pnpm run lint:obsidian` | Only the Obsidian review rules (ESLint on TypeScript 6, plugin package and root `manifest.json`). Warnings fail the run. |
 | `pnpm run fix` | Apply format and lint fixes (`vp check --fix`) |
 | `pnpm test` | Run all tests once (`vp test`) |
 | `pnpm run build` | Build every package (`vp run` over `packages/*`) |
@@ -39,6 +40,7 @@ For one package, run its script with a filter, for example `pnpm --filter @obsy/
 | `packages/obsidian-plugin/` | Plugin source. Builds `dist/main.js`. |
 | `manifest.json`, `versions.json` | The plugin manifest and version map. They must stay at the repository root: the Obsidian community directory reads `manifest.json` from the root of the default branch. |
 | `vite.config.ts` | Root lint, format, and test settings for every package |
+| `packages/obsidian-plugin/eslint.config.mjs` | Obsidian review rules. ESLint runs from the repository root, because the rules read `manifest.json` from the working directory. |
 | `tsconfig.base.json` | Shared compiler options. ES libraries only; no DOM or Node types by default. |
 | `pnpm-workspace.yaml` | Workspace packages, the version catalog, and Vite+ overrides |
 | `mise.toml` | Node and pnpm versions |

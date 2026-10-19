@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "vp check",
+    "check": "vp check && pnpm run lint:obsidian",
     "fix": "vp check --fix",
+    "lint:obsidian": "pnpm --filter @obsy/obsidian-plugin run lint:obsidian",
     "test": "vp test",
     "build": "vp run --filter './packages/*' build"
   },
