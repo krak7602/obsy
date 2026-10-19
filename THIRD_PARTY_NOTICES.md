@@ -4,7 +4,7 @@ This file records third-party code that obsy reuses or ships. See [Clean-room li
 
 ## aws4fetch
 
-- Used by: `@obsy/storage-s3`, as an npm dependency (`aws4fetch` 1.0.20). Its source is not copied into this repository. Bundles that include `@obsy/storage-s3`, such as the Obsidian plugin, ship it and must keep this notice.
+- Used by: `@obsy/storage-s3`, as an npm dependency (`aws4fetch` 1.0.20). Its source is not copied into this repository. Bundles that include `@obsy/storage-s3`, such as the Obsidian plugin and the platform probe (`obsy-probe`), ship it and must keep this notice.
 - Source: <https://github.com/mhart/aws4fetch>
 - Licence: MIT
 
@@ -34,5 +34,5 @@ SOFTWARE.
 
 These are reimplementations, not copied code. They are listed for completeness.
 
-- **mulberry32** (seeded PRNG in `packages/storage-testkit/src/runtime.ts`), by Tommy Ettinger, released into the public domain.
+- **mulberry32** (seeded PRNG in `packages/storage-testkit/src/runtime.ts`, also bundled in the platform probe), by Tommy Ettinger, released into the public domain.
 - **FNV-1a** (test etag hash in `packages/storage-testkit/src/memory-storage.ts`), by Glenn Fowler, Landon Curt Noll, and Kiem-Phong Vo, public domain.

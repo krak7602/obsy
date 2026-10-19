@@ -3,6 +3,7 @@
 
 interface TimerGlobals {
   setTimeout?: (callback: () => void, ms: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
   performance?: { now(): number };
 }
 
@@ -15,6 +16,21 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimer(resolve, ms);
   });
+}
+
+/**
+ * A timer that resolves after `ms` milliseconds unless it is cancelled. A
+ * cancelled timer never resolves and holds no pending callback.
+ */
+export function cancellableSleep(ms: number): { done: Promise<void>; cancel(): void } {
+  const setTimer = runtime.setTimeout;
+  const clearTimer = runtime.clearTimeout;
+  if (setTimer === undefined) return { done: Promise.resolve(), cancel: () => {} };
+  let handle: unknown;
+  const done = new Promise<void>((resolve) => {
+    handle = setTimer(resolve, ms);
+  });
+  return { done, cancel: () => clearTimer?.(handle) };
 }
 
 /** A monotonic clock in milliseconds when available, else wall time. */

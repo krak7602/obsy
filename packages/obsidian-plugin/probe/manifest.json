@@ -1,0 +1,9 @@
+{
+  "id": "obsy-probe",
+  "name": "Obsy Probe",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.2",
+  "description": "Measures the platform features that Obsy depends on. Use it in a scratch vault only. It does not sync anything.",
+  "author": "Rahul Krishna K A",
+  "isDesktopOnly": false
+}

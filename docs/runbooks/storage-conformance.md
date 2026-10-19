@@ -17,6 +17,7 @@ Run the commands from the repository root.
 | Command | Target | Needs | In `pnpm test` |
 | --- | --- | --- | --- |
 | `pnpm test` | `MemoryStorage`, and `S3Storage` through the fake S3 endpoint | Nothing | Yes |
+| Obsy probe, **Storage over requestUrl** | `S3Storage` over `requestUrl`, inside Obsidian, against a scratch bucket | Obsidian, a scratch vault, and a scratch bucket ([platform probe](platform-probe.md)) | No |
 | `pnpm run test:s3-local` | `S3Storage` against a local S3-compatible server in Docker | Docker, `curl`, `openssl` | No |
 | `pnpm run test:s3-live` | `S3Storage` against a real R2 or AWS S3 bucket | A scratch bucket and a token scoped to it | No |
 

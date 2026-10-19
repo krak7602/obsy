@@ -39,7 +39,7 @@ For one package, run its script with a filter, for example `pnpm --filter @obsy/
 | Path | Contents |
 | --- | --- |
 | `packages/<name>/` | One workspace package. npm name `@obsy/<name>`. |
-| `packages/obsidian-plugin/` | Plugin source. Builds `dist/main.js`. |
+| `packages/obsidian-plugin/` | Plugin source. Builds `dist/main.js`, and the [platform probe](platform-probe.md) in `dist/obsy-probe/`. |
 | `manifest.json`, `versions.json` | The plugin manifest and version map. They must stay at the repository root: the Obsidian community directory reads `manifest.json` from the root of the default branch. |
 | `vite.config.ts` | Root lint, format, and test settings for every package |
 | `packages/obsidian-plugin/eslint.config.mjs` | Obsidian review rules. ESLint runs from the repository root, because the rules read `manifest.json` from the working directory. |

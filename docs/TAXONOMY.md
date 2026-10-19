@@ -46,6 +46,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Development](runbooks/development.md) | Setup, commands, repository layout, adding packages |
 | [Storage conformance](runbooks/storage-conformance.md) | Running the conformance suite locally in Docker and against a live bucket |
 | [Merge corpus](runbooks/merge-corpus.md) | Running the merge against a private corpus, and the heavy synthetic tests |
+| [Platform probe](runbooks/platform-probe.md) | Building, installing, and running the iPhone platform probe; sending its report |
 | [Correctness and testing](concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Clean-room licensing](concepts/clean-room-licensing.md) | What code may and may not be read or reused |
 | [Sync design research](learning/sync-design-research.md) | The original research report (evidence, frozen) |

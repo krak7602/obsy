@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted design, not yet implemented. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
+Status: accepted design, not yet implemented, except the `requestUrl` transport ([Platform](#platform)). Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
 
 The plugin uses `@obsy/core` and `@obsy/storage-s3`, or the [relay](relay.md)'s device-token proxy. It owns the Obsidian-specific parts: scanning, applying remote changes safely, the mobile lifecycle, settings, and pairing.
 
@@ -52,15 +52,20 @@ The first device creates the vault. Others join by scanning or typing a short pa
 
 Pure TypeScript, no Node APIs, no WASM, `isDesktopOnly: false`, `minAppVersion` 1.12.3. HTTP goes through `requestUrl` with a client-side timeout.
 
+Existing behavior: `createRequestUrlFetch` (`packages/obsidian-plugin/src/transport/request-url-fetch.ts`) is the `fetch` that the plugin passes to `S3Storage`. It sends every header unchanged, sets `throw: false` so that 4xx and 5xx come back as responses with headers and bodies, matches response header names without regard to case, and sends `ArrayBuffer` bodies with exactly the view's bytes. `requestUrl` has no timeout and no abort, so the transport times out on the client (default 30 s) and honours an abort signal; the underlying request keeps running and its result is ignored. If `requestUrl` throws for a status despite `throw: false`, the transport turns the error back into a response. Node tests run the full conformance suite through it against the fake S3 endpoint.
+
+Open: whether `requestUrl`, `SubtleCrypto`, IndexedDB, and `SecretStorage` behave this way on iOS. The [platform probe](../runbooks/platform-probe.md) measures them; the iPhone run is pending.
+
 The platform evidence is in the [Obsidian platform research notes](../learning/research-notes/obsidian-platform.md).
 
 ### Build and distribution
 
-Existing behavior: `packages/obsidian-plugin/` builds `dist/main.js` (CommonJS) with Rolldown. The plugin does nothing yet.
+Existing behavior: `packages/obsidian-plugin/` builds `dist/main.js` (CommonJS) with Rolldown. The plugin does nothing yet. A second entry builds the platform probe, a separate plugin with the ID `obsy-probe`, into `dist/obsy-probe/` ([platform probe](../runbooks/platform-probe.md)). The probe is installed by hand in scratch vaults and is never released.
 
 The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases.
 
 ## History
 
 - 2026-10-20: Plugin shell scaffolded; build and distribution rules recorded.
+- 2026-10-20: Added the `requestUrl` transport and the platform probe build.
 - 2026-10-19: Plugin design accepted, from the former `DESIGN.md`.
