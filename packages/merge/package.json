@@ -20,6 +20,8 @@
     "node-diff3": "3.2.1"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
+    "fast-check": "catalog:",
     "vite-plus": "catalog:"
   }
 }

@@ -1,7 +1,17 @@
 /**
  * Markdown-aware three-way merge for obsy.
  *
- * The public API is defined in the phase 0 merge spike. See
- * docs/subsystems/merge.md for the accepted merge rules.
+ * `merge3` is the only entry point. It is pure, deterministic, and free of
+ * Node and DOM APIs. See docs/subsystems/merge.md for the rules.
  */
-export {};
+export { merge3 } from './merge';
+export type {
+  CleanMerge,
+  ConflictMerge,
+  MergeConflict,
+  MergeInput,
+  MergeResult,
+  MergeRule,
+} from './merge';
+export type { FrontmatterConflictReason } from './frontmatter';
+export type { LineRange } from './lines';
