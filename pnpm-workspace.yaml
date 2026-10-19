@@ -4,6 +4,8 @@ packages:
 catalog:
   '@codemirror/state': 6.7.6
   '@codemirror/view': 6.43.13
+  '@types/node': 24.19.2 # Node 24 types, for test code only
+  aws4fetch: 1.0.20
   obsidian: 1.14.4
   rolldown: 1.2.14 # Match the version from `vp toolchain`
   typescript: 7.0.2

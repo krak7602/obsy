@@ -29,6 +29,6 @@ export type {
   InjectedFault,
   InjectedReply,
 } from './fake-s3';
-export { randomYieldScheduler, seededRandom } from './runtime';
+export { fromUtf8, randomYieldScheduler, seededRandom, utf8 } from './runtime';
 export { summariseLatencies } from './stats';
 export type { LatencySummary } from './stats';

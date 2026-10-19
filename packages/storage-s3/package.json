@@ -1,0 +1,36 @@
+{
+  "name": "@obsy/storage-s3",
+  "version": "0.0.0",
+  "private": true,
+  "description": "obsy Storage over the S3 API (Cloudflare R2, AWS S3), with an injectable fetch",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "test:local": "bash scripts/s3-local.sh test",
+    "test:live": "vp test --config vite.integration.config.ts test/live.integration.test.ts"
+  },
+  "dependencies": {
+    "@obsy/protocol": "workspace:*",
+    "aws4fetch": "catalog:"
+  },
+  "devDependencies": {
+    "@obsy/storage-testkit": "workspace:*",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
