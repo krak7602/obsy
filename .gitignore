@@ -23,3 +23,6 @@ data.json
 .idea/
 .vscode/
 *.swp
+
+# Agent worktrees
+.claude/worktrees/
