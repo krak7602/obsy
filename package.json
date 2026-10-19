@@ -7,6 +7,8 @@
     "fix": "vp check --fix",
     "lint:obsidian": "pnpm --filter @obsy/obsidian-plugin run lint:obsidian",
     "test": "vp test",
+    "test:s3-local": "pnpm --filter @obsy/storage-s3 run test:local",
+    "test:s3-live": "pnpm --filter @obsy/storage-s3 run test:live",
     "build": "vp run --filter './packages/*' build"
   },
   "devDependencies": {

@@ -1,14 +1,14 @@
 ---
 title: Correctness and testing
 aliases: [invariants, safety invariants, deterministic simulation, simulator, conformance, testing strategy, no silent overwrite]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Correctness and testing
 
 ## Current
 
-Status: accepted principle. No tests exist yet.
+Status: accepted principle. The storage conformance suite exists; the simulator and merge property tests do not yet.
 
 ### Principle
 
@@ -26,7 +26,7 @@ Related rules that follow from these invariants live with their subjects: "edit 
 
 ### Test strategy
 
-- **Conformance suite** for storage adapters: conditional-create races, `If-Match`, list ordering, read-after-write. Run it against every provider before the provider is listed as supported. See [Storage adapters](../subsystems/storage.md).
+- **Conformance suite** for storage adapters: conditional-create races, a commit-log race, `If-Match`, list ordering, read-after-write. Existing behavior; run locally, not yet on R2 or AWS S3. Run it against every provider before the provider is listed as supported. See [Storage adapters](../subsystems/storage.md#conformance-suite) and the [runbook](../runbooks/storage-conformance.md).
 - **Deterministic simulation** of the core: a Mac, an iPhone, and an agent with offline periods, crashes between blob upload and log commit, duplicate requests, racy mtimes, renames and deletes. Everything is driven from a seed and is replayable. Phase 1 is done when the invariants hold over at least 1M seeds.
 - **Merge properties** with `git merge-file` as an oracle, plus a private corpus of real vault edits. Keep the corpus out of this repository.
 
@@ -35,3 +35,4 @@ The prior art for this strategy (Dropbox CanopyCheck and Trinity, TigerBeetle VO
 ## History
 
 - 2026-10-19: Invariants and test strategy accepted, from the former `DESIGN.md`.
+- 2026-10-20: Storage conformance suite and race harness implemented ([storage spike](../learning/storage-spike.md)).
