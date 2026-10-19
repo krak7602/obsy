@@ -191,6 +191,16 @@ describe('createRequestUrlFetch', () => {
     expect(events[0]?.headerNames).toContain('ETag');
   });
 
+  it.each(['header', 'param'] as const)(
+    'stores the content type sent in %s mode, and reports it on GET',
+    async (mode) => {
+      const { storage, events } = setup({}, { contentType: mode });
+      await storage.putIfAbsent('k', utf8('1'), 'application/x-obsy-probe');
+      await storage.get('k');
+      expect(events[1]?.responseContentType).toBe('application/x-obsy-probe');
+    },
+  );
+
   it.each([
     [409, 'ConditionalRequestConflict', false],
     [429, 'TooManyRequests', false],

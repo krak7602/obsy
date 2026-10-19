@@ -46,6 +46,8 @@ export interface TransportEvent {
   requestHeaderNames: string[];
   /** Response header names exactly as `requestUrl` returned them. */
   headerNames: string[];
+  /** The response `content-type` value, or `null`. */
+  responseContentType: string | null;
 }
 
 export interface TransportStats {
@@ -231,6 +233,10 @@ export function createRequestUrlFetch(
         responseBytes,
         requestHeaderNames: Object.keys(headers),
         headerNames: Object.keys(response?.headers ?? {}),
+        responseContentType:
+          Object.entries(response?.headers ?? {}).find(
+            ([name]) => name.toLowerCase() === 'content-type',
+          )?.[1] ?? null,
       });
     };
 

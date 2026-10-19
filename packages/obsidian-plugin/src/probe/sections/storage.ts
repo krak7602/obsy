@@ -356,24 +356,43 @@ async function transportChecks(
     );
   }
 
-  steps.push(
-    await step('content-type in RequestUrlParam.contentType instead of a header', async () => {
-      const paramTransport = createRequestUrlFetch(input.requestUrl, {
-        timers: input.timers,
-        contentType: 'param',
-      });
-      const paramStorage = new S3Storage({ ...base, fetch: paramTransport }).withPrefix(
-        `${input.runId}/transport/`,
-      );
-      try {
-        await paramStorage.putIfAbsent('content-type-param.txt', new Uint8Array([1]), 'text/plain');
-        return { passed: true, observed: 'accepted' };
-      } catch (error) {
-        // Informational: a signature error here means requestUrl changed the header.
-        return { passed: true, observed: 'rejected', ...errorFields(error) };
-      }
-    }),
-  );
+  for (const mode of ['header', 'param'] as const) {
+    steps.push(
+      await step(
+        `content-type sent as a ${mode === 'header' ? 'header' : 'contentType parameter'} is stored unchanged`,
+        async () => {
+          // aws4fetch does not sign content-type, so read the stored type back.
+          const events: TransportEvent[] = [];
+          const modeTransport = createRequestUrlFetch(input.requestUrl, {
+            timers: input.timers,
+            contentType: mode,
+            observer: (event) => events.push(event),
+          });
+          const modeStorage = new S3Storage({ ...base, fetch: modeTransport }).withPrefix(
+            `${input.runId}/transport/`,
+          );
+          const sent = `application/x-obsy-probe-${mode}`;
+          let putError: Record<string, unknown> | undefined;
+          try {
+            await modeStorage.putIfAbsent(`content-type-${mode}.bin`, new Uint8Array([1]), sent);
+          } catch (error) {
+            putError = errorFields(error);
+          }
+          if (putError !== undefined) {
+            // Informational for `param`: the sync plugin uses `header`.
+            return { passed: mode === 'param', put: 'rejected', ...putError };
+          }
+          await modeStorage.get(`content-type-${mode}.bin`);
+          const stored = events.at(-1)?.responseContentType ?? null;
+          return {
+            passed: mode === 'param' || stored === sent,
+            sent,
+            stored,
+          };
+        },
+      ),
+    );
+  }
 
   steps.push(
     await step('client-side timeout; the abandoned request is not cancelled', async () => {

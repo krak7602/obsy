@@ -115,7 +115,11 @@ export function createFakeS3(options: FakeS3Options): FakeS3 {
       if (object === null) return xmlError(404, 'NoSuchKey', 'The specified key does not exist.');
       return reply(
         200,
-        { etag: `"${object.etag}"`, 'content-length': String(object.body.length) },
+        {
+          etag: `"${object.etag}"`,
+          'content-length': String(object.body.length),
+          'content-type': storage.contentTypeOf(key) ?? 'binary/octet-stream',
+        },
         object.body,
       );
     }
