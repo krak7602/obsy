@@ -6,6 +6,15 @@
     },
     {
       "path": "packages/obsidian-plugin"
+    },
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "packages/storage-s3"
+    },
+    {
+      "path": "packages/storage-testkit"
     }
   ]
 }

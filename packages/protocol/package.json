@@ -1,0 +1,28 @@
+{
+  "name": "@obsy/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bucket protocol for obsy: the Storage interface, its errors, and key rules",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build": "vp pack"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

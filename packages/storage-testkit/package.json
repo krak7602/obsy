@@ -1,0 +1,17 @@
+{
+  "name": "@obsy/storage-testkit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "In-memory Storage, conformance suite, race harness, and fake S3 for obsy tests",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@obsy/protocol": "workspace:*",
+    "vite-plus": "catalog:"
+  }
+}
