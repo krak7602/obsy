@@ -60,7 +60,7 @@ The output has these sections:
 | `comparison with git merge-file` | One [oracle category](../learning/merge-spike.md#oracle-categories) per case |
 | `obsy ms`, `git ms total` | Merge timings, and the size of the largest case in bytes |
 
-A `git-only:unexplained`, `git-only:different-text`, or `obsy-only:unexplained` count is a finding. Look at those cases locally with `--list` and `--show`, and fix or explain them before you record the run.
+A `git-only:unexplained` or `git-only:different-text` count is a finding. `obsy-only:segment-alignment` is assigned by elimination, so check a sample of those cases too. Look at the cases locally with `--list` and `--show`, and fix or explain them before you record the run.
 
 ### Run the heavy synthetic tests
 

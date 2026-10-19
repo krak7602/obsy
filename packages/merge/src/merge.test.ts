@@ -401,6 +401,16 @@ describe('frontmatter', () => {
     ]);
   });
 
+  it('keeps added frontmatter at the top when the other side inserts at the top', () => {
+    // The base starts with a thematic break, not frontmatter. Found by the oracle.
+    const base = lines('---', '1. inbox');
+    const ours = lines('1. plan 9', '---', '1. inbox');
+    const theirs = `${fm('aliases:', '- inbox')}- notes 2\n---\n1. inbox`;
+    expect(expectClean(m(base, ours, theirs))).toBe(
+      `${fm('aliases:', '- inbox')}- notes 2\n1. plan 9\n---\n1. inbox`,
+    );
+  });
+
   it('keeps frontmatter that one side added while the other changed the body', () => {
     const ours = fm('tags: [new]') + body;
     const theirs = lines('# Title', '', 'Body text!');

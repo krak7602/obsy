@@ -24,6 +24,7 @@ const DOCUMENTED_GIT_ONLY: ReadonlySet<Comparison> = new Set<Comparison>([
   'git-only:diff3-alignment',
   'git-only:blank-lines',
   'git-only:git-duplicates',
+  'git-only:frontmatter-split',
 ]);
 
 const git = new GitMergeFile();

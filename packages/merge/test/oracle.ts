@@ -140,7 +140,9 @@ export function compare(input: MergeInput, obsy: MergeResult, git: GitResult): C
     if (!plainAgrees) return 'obsy-only:diff3-alignment';
     if (hasFrontmatter(input)) return 'obsy-only:frontmatter-split';
     if (lacksFinalNewline(input)) return 'obsy-only:final-newline';
-    return 'obsy-only:unexplained';
+    // By elimination: plain node-diff3 agrees with git, so obsy's prefix
+    // trim and anchors chose another alignment. Inspect these cases.
+    return 'obsy-only:segment-alignment';
   }
 
   if (obsy.status === 'clean') {
@@ -148,6 +150,8 @@ export function compare(input: MergeInput, obsy: MergeResult, git: GitResult): C
     const difference = textDifference(obsy.text, git.text);
     if (difference !== 'different-text') return `git-only:${difference}`;
     if (!plainAgrees) return 'git-only:diff3-alignment';
+    // git can move a body line above frontmatter that one side added.
+    if (hasFrontmatter(input)) return 'git-only:frontmatter-split';
     return 'git-only:different-text';
   }
 
