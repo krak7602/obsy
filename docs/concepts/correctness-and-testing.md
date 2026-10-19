@@ -1,14 +1,14 @@
 ---
 title: Correctness and testing
 aliases: [invariants, safety invariants, deterministic simulation, simulator, conformance, testing strategy, no silent overwrite]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Correctness and testing
 
 ## Current
 
-Status: accepted principle. No tests exist yet.
+Status: accepted principle. Merge unit, property, and oracle tests exist ([merge spike](../learning/merge-spike.md)). The simulator and the conformance suite do not exist yet.
 
 ### Principle
 
@@ -28,10 +28,11 @@ Related rules that follow from these invariants live with their subjects: "edit 
 
 - **Conformance suite** for storage adapters: conditional-create races, `If-Match`, list ordering, read-after-write. Run it against every provider before the provider is listed as supported. See [Storage adapters](../subsystems/storage.md).
 - **Deterministic simulation** of the core: a Mac, an iPhone, and an agent with offline periods, crashes between blob upload and log commit, duplicate requests, racy mtimes, renames and deletes. Everything is driven from a seed and is replayable. Phase 1 is done when the invariants hold over at least 1M seeds.
-- **Merge properties** with `git merge-file` as an oracle, plus a private corpus of real vault edits. Keep the corpus out of this repository.
+- **Merge properties** with `git merge-file` as an oracle, plus a private corpus of real vault edits. Keep the corpus out of this repository; run it with the [merge corpus runbook](../runbooks/merge-corpus.md).
 
 The prior art for this strategy (Dropbox CanopyCheck and Trinity, TigerBeetle VOPR) is in the [protocol research notes](../learning/research-notes/protocol-design.md#10-testing-strategies-for-sync-correctness).
 
 ## History
 
 - 2026-10-19: Invariants and test strategy accepted, from the former `DESIGN.md`.
+- 2026-10-20: First merge unit, property, and oracle tests added in the phase 0 merge spike.

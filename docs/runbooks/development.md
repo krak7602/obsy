@@ -51,7 +51,7 @@ For one package, run its script with a filter, for example `pnpm --filter @obsy/
 2. For a library, add `vite.config.ts` with a `pack` block and a `"build": "vp pack"` script. Copy the shape from `packages/merge/`.
 3. Add `vite-plus` as `"catalog:"` in `devDependencies`. Put shared versions in the catalog.
 4. Add the package to the `references` in the root `tsconfig.json`.
-5. Import test APIs from `vite-plus/test`. Name test files `*.test.ts` under `src/`.
+5. Import test APIs from `vite-plus/test`. Name test files `*.test.ts` under `src/`. A test that needs Node APIs (for example, one that spawns `git`) goes under `packages/<name>/test/`, with its own `tsconfig.json` that adds `"types": ["node"]`. The root test include picks up both folders. `packages/merge/test/` shows the shape.
 6. Run `pnpm install`, then the three commands above.
 
 Add `dom` or Node types to a package's `tsconfig.json` only when that package runs there. Never add them to `protocol`, `merge`, or `core`.
