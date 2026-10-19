@@ -230,7 +230,12 @@ export function mergeFrontmatter(
   const conflicts: FrontmatterConflict[] = [];
   let unionInserts = preamble.union;
   let containedInserts = preamble.contained;
-  const allKeys = [...new Set([...theirKeys, ...ourKeys, ...baseKeys])];
+  // Base order, then added keys sorted, so that the conflict list does not
+  // depend on which side is ours.
+  const added = [...new Set([...ourKeys, ...theirKeys])]
+    .filter((key) => !baseMap.has(key))
+    .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+  const allKeys = [...baseKeys, ...added];
   for (const key of allKeys) {
     const value = mergeValue(baseMap.get(key), ourMap.get(key), theirMap.get(key));
     if (!value.clean) {

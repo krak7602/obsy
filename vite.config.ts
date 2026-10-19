@@ -20,6 +20,6 @@ export default defineConfig({
     ignorePatterns: ['docs/**', '*.md'],
   },
   test: {
-    include: ['packages/*/src/**/*.test.ts'],
+    include: ['packages/*/src/**/*.test.ts', 'packages/*/test/**/*.test.ts'],
   },
 });

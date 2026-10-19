@@ -32,7 +32,7 @@ describe('fast paths', () => {
   });
 
   it('returns ours when theirs did not change', () => {
-    expect(expectClean(m('a\n', '﻿b', 'a\n'))).toBe('﻿b');
+    expect(expectClean(m('a\n', '\uFEFFb', 'a\n'))).toBe('\uFEFFb');
   });
 });
 
@@ -240,7 +240,7 @@ describe('no base', () => {
 
   it('conflicts when line endings or the byte order mark differ', () => {
     expect(m(null, 'a\r\nb\r\n', 'a\n').status).toBe('conflict');
-    expect(m(null, '﻿a\nb\n', 'a\n').status).toBe('conflict');
+    expect(m(null, '\uFEFFa\nb\n', 'a\n').status).toBe('conflict');
   });
 });
 
@@ -468,10 +468,10 @@ describe('frontmatter', () => {
   });
 
   it('finds frontmatter after a byte order mark', () => {
-    const base = `﻿${fm('a: 1', 'b: 2')}${body}`;
-    const ours = `﻿${fm('a: 10', 'b: 2')}${body}`;
-    const theirs = `﻿${fm('a: 1', 'b: 20')}${body}`;
-    expect(expectClean(m(base, ours, theirs))).toBe(`﻿${fm('a: 10', 'b: 20')}${body}`);
+    const base = `\uFEFF${fm('a: 1', 'b: 2')}${body}`;
+    const ours = `\uFEFF${fm('a: 10', 'b: 2')}${body}`;
+    const theirs = `\uFEFF${fm('a: 1', 'b: 20')}${body}`;
+    expect(expectClean(m(base, ours, theirs))).toBe(`\uFEFF${fm('a: 10', 'b: 20')}${body}`);
   });
 });
 
@@ -526,8 +526,8 @@ describe('line endings and encoding', () => {
   });
 
   it('keeps a byte order mark that one side added', () => {
-    expect(expectClean(m(base, `﻿${ours}`, theirs))).toBe(`﻿${merged}`);
-    expect(expectClean(m(`﻿${base}`, ours, `﻿${theirs}`))).toBe(merged);
+    expect(expectClean(m(base, `\uFEFF${ours}`, theirs))).toBe(`\uFEFF${merged}`);
+    expect(expectClean(m(`\uFEFF${base}`, ours, `\uFEFF${theirs}`))).toBe(merged);
   });
 
   it('keeps lone carriage returns inside lines', () => {

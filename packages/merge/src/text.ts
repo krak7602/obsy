@@ -30,7 +30,7 @@ export interface DecodedText {
   readonly finalNewline: boolean;
 }
 
-const BOM = '﻿';
+const BOM = '\uFEFF';
 const CR = 13;
 
 /** Returns the line-ending style of `text`. */

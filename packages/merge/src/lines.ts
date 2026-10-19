@@ -125,10 +125,20 @@ function findAnchors(o: readonly string[], a: readonly string[], b: readonly str
     const ib = inB.get(line) ?? -1;
     if (io >= 0 && ia >= 0 && ib >= 0) candidates.push({ o: io, a: ia, b: ib });
   }
-  return longestIncreasing(
-    longestIncreasing(candidates, (anchor) => anchor.a),
-    (anchor) => anchor.b,
-  );
+  // Filter by ours' order then theirs', and the other way round. Choose by a
+  // rule that does not depend on which side is ours, so that swapping the
+  // sides gives the same anchors.
+  const byA = (anchor: Anchor): number => anchor.a;
+  const byB = (anchor: Anchor): number => anchor.b;
+  const first = longestIncreasing(longestIncreasing(candidates, byA), byB);
+  const second = longestIncreasing(longestIncreasing(candidates, byB), byA);
+  if (first.length !== second.length) return first.length > second.length ? first : second;
+  for (let i = 0; i < first.length; i++) {
+    const x = first[i]?.o ?? 0;
+    const y = second[i]?.o ?? 0;
+    if (x !== y) return x < y ? first : second;
+  }
+  return first;
 }
 
 class MergeState {
@@ -191,9 +201,15 @@ export interface MergeLinesOptions {
  *   are both kept: theirs first, then ours (see `resolveInserts`).
  * - Any other pair of changes that overlap or touch is a conflict.
  *
- * Lines that all three lists share at the start and the end are set aside
- * first. The rest is split at anchor lines (see `findAnchors`), and
- * node-diff3 merges each segment.
+ * Lines that all three lists share at the start are set aside first. The
+ * rest is split at anchor lines (see `findAnchors`), and node-diff3 merges
+ * each segment.
+ *
+ * Lines shared at the end are not set aside. Doing so moves an ambiguous
+ * insert or delete among repeated lines (often blank lines) to its earliest
+ * position. That can join two inserts that git keeps apart, and move an
+ * insert away from its context. git moves such changes to their latest
+ * position, and trimming only the start keeps that bias.
  */
 export function mergeLines(
   base: readonly string[],
@@ -206,18 +222,9 @@ export function mergeLines(
   while (prefix < shortest && base[prefix] === ours[prefix] && base[prefix] === theirs[prefix]) {
     prefix++;
   }
-  let suffix = 0;
-  while (
-    suffix < shortest - prefix &&
-    base[base.length - 1 - suffix] === ours[ours.length - 1 - suffix] &&
-    base[base.length - 1 - suffix] === theirs[theirs.length - 1 - suffix]
-  ) {
-    suffix++;
-  }
-
-  const o = base.slice(prefix, base.length - suffix);
-  const a = ours.slice(prefix, ours.length - suffix);
-  const b = theirs.slice(prefix, theirs.length - suffix);
+  const o = base.slice(prefix);
+  const a = ours.slice(prefix);
+  const b = theirs.slice(prefix);
 
   const state = new MergeState();
   state.lines.push(...base.slice(0, prefix));
@@ -234,7 +241,6 @@ export function mergeLines(
   }
 
   if (state.conflicts.length > 0) return { clean: false, conflicts: state.conflicts };
-  state.lines.push(...base.slice(base.length - suffix));
   return {
     clean: true,
     lines: state.lines,
