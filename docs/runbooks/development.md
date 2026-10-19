@@ -25,7 +25,9 @@ Run these from the repository root.
 | `pnpm run check` | Format check, lint, and type check (`vp check`), then the Obsidian review rules |
 | `pnpm run lint:obsidian` | Only the Obsidian review rules (ESLint on TypeScript 6, plugin package and root `manifest.json`). Warnings fail the run. |
 | `pnpm run fix` | Apply format and lint fixes (`vp check --fix`) |
-| `pnpm test` | Run all tests once (`vp test`) |
+| `pnpm test` | Run all tests once (`vp test`). Hermetic: no Docker, no network. |
+| `pnpm run test:s3-local` | Storage conformance against a local S3 server in Docker ([storage conformance](storage-conformance.md)) |
+| `pnpm run test:s3-live` | Storage conformance against a scratch R2 or S3 bucket ([storage conformance](storage-conformance.md)) |
 | `pnpm run build` | Build every package (`vp run` over `packages/*`) |
 
 Run `check`, `test`, and `build` before you report a change as done.
@@ -48,10 +50,10 @@ For one package, run its script with a filter, for example `pnpm --filter @obsy/
 ### Add a package
 
 1. Create `packages/<name>/` with `package.json` (`"name": "@obsy/<name>"`, `"type": "module"`, `"private": true` until it is published), `tsconfig.json` extending `../../tsconfig.base.json`, and `src/index.ts`.
-2. For a library, add `vite.config.ts` with a `pack` block and a `"build": "vp pack"` script. Copy the shape from `packages/merge/`.
+2. For a library, add `vite.config.ts` with a `pack` block and a `"build": "vp pack"` script. Copy the shape from `packages/merge/`. If other workspace packages import it, use `exports: { devExports: true }` in the `pack` block, point `exports` in `package.json` at `./src/index.ts`, and put the `dist` exports in `publishConfig`, as `packages/protocol/` does. Then tests and type checks use the source without a build first.
 3. Add `vite-plus` as `"catalog:"` in `devDependencies`. Put shared versions in the catalog.
 4. Add the package to the `references` in the root `tsconfig.json`.
-5. Import test APIs from `vite-plus/test`. Name test files `*.test.ts` under `src/`.
+5. Import test APIs from `vite-plus/test`. Name test files `*.test.ts` under `src/`. Tests that need Docker, the network, or Node APIs go in `test/` with their own `tsconfig.json` (Node types) and Vitest config, so that `pnpm test` stays hermetic. See `packages/storage-s3/test/`.
 6. Run `pnpm install`, then the three commands above.
 
 Add `dom` or Node types to a package's `tsconfig.json` only when that package runs there. Never add them to `protocol`, `merge`, or `core`.
@@ -63,3 +65,4 @@ Update `vite-plus` in the catalog. Then set the `vite` override to the same vers
 ## History
 
 - 2026-10-20: Workspace scaffolded with pnpm and Vite+ ([decision](../decisions/2026-10-20-toolchain.md)).
+- 2026-10-20: Added the storage conformance commands, source exports for workspace libraries, and the `test/` pattern for integration tests.
