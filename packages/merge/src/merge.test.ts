@@ -96,6 +96,14 @@ describe('line-level merge', () => {
     expect(m(base, ours, theirs).status).toBe('conflict');
   });
 
+  it('does not anchor on a blank line, so a delete is not lost', () => {
+    // Ours moved a line across a blank line; theirs deleted that line.
+    const b = lines('## Notes', '- a', '', '', '1. item');
+    const ours = lines('## Notes', '- a', '', '1. item', '');
+    const theirs = lines('## Notes', '- a', '', '');
+    expect(m(b, ours, theirs).status).toBe('conflict');
+  });
+
   it('gives the caller theirs to keep and ours to copy, never markers', () => {
     const ours = lines('# Ours');
     const theirs = lines('# Theirs');

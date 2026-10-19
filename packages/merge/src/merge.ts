@@ -29,7 +29,11 @@ export type MergeRule =
   | 'contained-insert'
   /** Both sides changed the frontmatter. It was merged key by key. */
   | 'frontmatter-keys'
-  /** The sides differed in line-ending style or byte order mark. Resolved three-way. */
+  /**
+   * The three texts did not share one line-ending style or byte order mark.
+   * Lines were compared without line breaks, and the style was resolved
+   * three-way.
+   */
   | 'text-format'
   /** There was no base, and one side strictly extended the other. */
   | 'no-base-extends';
@@ -164,9 +168,9 @@ export function merge3(input: MergeInput): MergeResult {
     const merged = mergeLineEnding(o.eol, a.eol, b.eol);
     if (merged === null) conflicts.push({ kind: 'line-endings' });
     else eol = merged;
-    if (known(a.eol) && known(b.eol) && a.eol !== b.eol) rules.add('text-format');
   }
-  if (a.bom !== b.bom) rules.add('text-format');
+  const styles = new Set([o.eol, a.eol, b.eol].filter(known));
+  if (styles.size > 1 || a.bom !== o.bom || b.bom !== o.bom) rules.add('text-format');
   const finalNewline = a.finalNewline === o.finalNewline ? b.finalNewline : a.finalNewline;
 
   const so = splitFrontmatter(o.lines);

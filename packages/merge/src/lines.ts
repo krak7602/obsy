@@ -115,6 +115,10 @@ function longestIncreasing<T>(items: readonly T[], key: (item: T) => number): T[
  * same order in all three. Anchors are unchanged on both sides, so changes
  * on different sides of an anchor never touch, and the lists can be merged
  * one segment at a time. This is the idea behind patience diff.
+ *
+ * Blank lines are never anchors. A blank line carries no meaning, so an
+ * anchor on it can match a side that moved content across it, and then a
+ * delete on the other side is lost.
  */
 function findAnchors(o: readonly string[], a: readonly string[], b: readonly string[]): Anchor[] {
   const inA = positions(a);
@@ -123,7 +127,7 @@ function findAnchors(o: readonly string[], a: readonly string[], b: readonly str
   for (const [line, io] of positions(o)) {
     const ia = inA.get(line) ?? -1;
     const ib = inB.get(line) ?? -1;
-    if (io >= 0 && ia >= 0 && ib >= 0) candidates.push({ o: io, a: ia, b: ib });
+    if (io >= 0 && ia >= 0 && ib >= 0 && !isBlank(line)) candidates.push({ o: io, a: ia, b: ib });
   }
   // Filter by ours' order then theirs', and the other way round. Choose by a
   // rule that does not depend on which side is ours, so that swapping the
