@@ -1,7 +1,7 @@
 ---
 title: Documentation taxonomy
 aliases: [documentation policy, knowledge map, repository working agreement]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Documentation taxonomy
@@ -44,10 +44,14 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Agent SDK and CLI](subsystems/agent-sdk.md) | Agent operations, owned blocks, provenance, CLI commands |
 | [Relay](subsystems/relay.md) | Optional push, device tokens, presence |
 | [Development](runbooks/development.md) | Setup, commands, repository layout, adding packages |
+| [Storage conformance](runbooks/storage-conformance.md) | Running the conformance suite locally in Docker and against a live bucket |
+| [Merge corpus](runbooks/merge-corpus.md) | Running the merge against a private corpus, and the heavy synthetic tests |
 | [Correctness and testing](concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Clean-room licensing](concepts/clean-room-licensing.md) | What code may and may not be read or reused |
 | [Sync design research](learning/sync-design-research.md) | The original research report (evidence, frozen) |
 | [Research notes](learning/research-notes/) | Detailed, sourced notes behind the report (evidence, frozen) |
+| [Storage spike](learning/storage-spike.md) | Phase 0 storage and conditional-create race results (evidence) |
+| [Merge spike](learning/merge-spike.md) | Phase 0 merge, oracle, and speed results (evidence) |
 
 Decision records are in [decisions/](decisions/).
 

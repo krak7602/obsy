@@ -8,13 +8,13 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted plan. The workspace is scaffolded ([toolchain](decisions/2026-10-20-toolchain.md)); phase 0 has not started.
+Status: accepted plan. The workspace is scaffolded ([toolchain](decisions/2026-10-20-toolchain.md)). Phase 0 is in progress: the [storage spike](learning/storage-spike.md) and the [merge spike](learning/merge-spike.md) ran locally; the live R2 run, the real-corpus run, and the iPhone measurements are pending.
 
 ### Build phases
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| 0. Spikes | `@obsy/merge` against a corpus of real edits; conditional-create race test on R2; `requestUrl`, hashing, and IndexedDB measured on an iPhone | Results recorded; open decisions settled |
+| 0. Spikes | `@obsy/merge` against a corpus of real edits ([merge spike](learning/merge-spike.md): synthetic inputs done, corpus pending); conditional-create race test on R2 ([storage spike](learning/storage-spike.md): local servers done, R2 pending); `requestUrl`, hashing, and IndexedDB measured on an iPhone (pending) | Results recorded; open decisions settled |
 | 1. Protocol and core | `@obsy/protocol`, `@obsy/core`, `@obsy/storage-s3`, `@obsy/storage-r2`, the simulator, and the conformance suite | Simulator invariants hold over at least 1M seeds; R2 passes conformance |
 | 2. Desktop plugin | Scanner, three trees, journal, join, editor-safe apply, rails; first run pull-only against a copy of a vault | The copy converges and `verify` shows no differences; forced conflicts produce correct copies |
 | 3. iOS | Lifecycle, chunked attachments, `SecretStorage`, pairing, BRAT release | Offline phone edits, app kills mid-upload, NFD and case cases: no loss, no duplicates |
@@ -37,7 +37,9 @@ The research listed these questions. Some are now settled.
 | Which folders, if any, become encrypted and unreadable by agents | Open; later work ([server-trusted v1](decisions/2026-10-19-server-trusted-v1.md)) |
 | Which sync method the real vault uses today, and how to cut over from it | Open; phase 5 |
 | Whether `requestUrl` and `SecretStorage` behave on iOS as documented | Open; phase 0 spike. Neither the HTTP stack nor the storage backing is publicly specified. |
-| Whether R2 conditional creates are atomic under real races | Open; phase 0 spike and conformance suite |
+| Whether R2 conditional creates are atomic under real races | Open; the harness passes on local servers, and the live R2 run is pending ([storage spike](learning/storage-spike.md)) |
+| How `merge3` handles long notes made mostly of repeated lines (about 27 s at 5,000 such lines): an O(ND) diff in place of `node-diff3`, or a size or time limit that returns a conflict | Open; owner decision ([merge spike](learning/merge-spike.md)) |
+| How to collect the private corpus of real vault edits | Open; depends on how the vault's history is kept today ([merge corpus runbook](runbooks/merge-corpus.md)) |
 | Whether Obsidian loads the Rolldown-built `main.js` | Open; phase 2, in a scratch vault |
 | How to run `eslint-plugin-obsidianmd` review rules, given typescript-eslint does not support TypeScript 7 | Settled: a separate ESLint run on TypeScript 6 in the plugin package ([toolchain](decisions/2026-10-20-toolchain.md)) |
 
@@ -47,7 +49,7 @@ In order of severity, from the research, restated for the accepted design:
 
 1. **History-destroying GC bugs.** R2 has no versioning. Soft-delete blobs, delay GC, keep GC an explicit `obsy gc` run, and keep independent exports.
 2. **Editor clobbering on open notes.** The platform exposes no dirty flag. Test the editor-transaction path hard.
-3. **Wrong ordering from union auto-merge** of concurrent appends. Acceptable for check-ins, but needs corpus evidence.
+3. **Wrong ordering from union auto-merge** of concurrent appends. Acceptable for check-ins, but needs corpus evidence. The [merge spike](learning/merge-spike.md) confirmed the rule on generated inputs only.
 4. **iOS suspension mid-write.** Mitigated by the journal-first design and idempotent commits.
 5. **Unicode and case collisions** across macOS and iOS. Obsidian itself regressed on NFD in 2026.
 6. **Agent runaway edits.** Capped by rate limits, missing delete rights, and mass-change rails.
@@ -58,5 +60,6 @@ Facts that the research could not verify: Cloudflare's per-object storage figure
 
 ## History
 
+- 2026-10-20: Phase 0 storage and merge spikes ran locally; added the merge speed and corpus questions.
 - 2026-10-20: Workspace scaffolded; added the plugin build and lint questions.
 - 2026-10-19: Build plan accepted, from the former `DESIGN.md`. Open questions and risks carried over from the [research](learning/sync-design-research.md#open-questions-and-risks), with their state under the accepted design.

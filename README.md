@@ -6,7 +6,7 @@ Status: design accepted. The workspace is scaffolded; no sync code yet.
 
 ## What it is
 
-- **Bring your own bucket.** Cloudflare R2 or AWS S3, the providers verified to support the conditional writes obsy relies on. No server is required: the bucket itself orders every change.
+- **Bring your own bucket.** Cloudflare R2 or AWS S3, the providers documented to support the conditional writes obsy relies on. No server is required: the bucket itself orders every change.
 - **No silent overwrites.** Every change states the version it was based on. Concurrent edits merge with a Markdown-aware three-way merge, or both versions are kept as a visible conflict copy.
 - **Plain, inspectable storage.** File content is stored as-is, addressed by SHA-256, with a commit log and checkpoints next to it. History and restore come built in.
 - **Obsidian plugin** for desktop and iPhone. It syncs on launch, on returning to the app, and on save; iOS gives plugins no background time.
@@ -45,6 +45,8 @@ Start with [Architecture](docs/architecture.md). It links to every layer.
 | [Relay](docs/subsystems/relay.md) | Optional push and device tokens |
 | [Correctness and testing](docs/concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Development](docs/runbooks/development.md) | Setup, commands, repository layout |
+| [Storage conformance](docs/runbooks/storage-conformance.md) and [merge corpus](docs/runbooks/merge-corpus.md) | Running the storage and merge test runs |
+| [Phase 0 results](docs/roadmap.md#build-phases) | The [storage spike](docs/learning/storage-spike.md) and the [merge spike](docs/learning/merge-spike.md) |
 | [Decisions](docs/decisions/) | Why each major choice was made |
 | [Design research](docs/learning/sync-design-research.md) | The evidence, with sources, and [detailed notes](docs/learning/research-notes/) |
 | [Documentation taxonomy](docs/TAXONOMY.md) | How the docs are organised and maintained |
