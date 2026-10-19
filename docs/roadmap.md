@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted plan. The workspace is scaffolded ([toolchain](decisions/2026-10-20-toolchain.md)); phase 0 has not started.
+Status: accepted plan. The workspace is scaffolded ([toolchain](decisions/2026-10-20-toolchain.md)); phase 0 is in progress. Platform probe: built; iPhone run pending ([runbook](runbooks/platform-probe.md)).
 
 ### Build phases
 
@@ -36,9 +36,9 @@ The research listed these questions. Some are now settled.
 | Whether obsy is published, given the "obsync" name collision and directory review | Settled: renamed to obsy, publishing intended ([naming](decisions/2026-10-19-naming.md)) |
 | Which folders, if any, become encrypted and unreadable by agents | Open; later work ([server-trusted v1](decisions/2026-10-19-server-trusted-v1.md)) |
 | Which sync method the real vault uses today, and how to cut over from it | Open; phase 5 |
-| Whether `requestUrl` and `SecretStorage` behave on iOS as documented | Open; phase 0 spike. Neither the HTTP stack nor the storage backing is publicly specified. |
+| Whether `requestUrl` and `SecretStorage` behave on iOS as documented | Open; phase 0 spike. Neither the HTTP stack nor the storage backing is publicly specified. Probe built ([platform probe](runbooks/platform-probe.md)); iPhone run pending. |
 | Whether R2 conditional creates are atomic under real races | Open; phase 0 spike and conformance suite |
-| Whether Obsidian loads the Rolldown-built `main.js` | Open; phase 2, in a scratch vault |
+| Whether Obsidian loads the Rolldown-built `main.js` | Open; phase 2, in a scratch vault. The probe's `main.js` is built the same way, so its first run answers this too. |
 | How to run `eslint-plugin-obsidianmd` review rules, given typescript-eslint does not support TypeScript 7 | Settled: a separate ESLint run on TypeScript 6 in the plugin package ([toolchain](decisions/2026-10-20-toolchain.md)) |
 
 ### Risks
@@ -59,4 +59,5 @@ Facts that the research could not verify: Cloudflare's per-object storage figure
 ## History
 
 - 2026-10-20: Workspace scaffolded; added the plugin build and lint questions.
+- 2026-10-20: Phase 0 platform probe built; iPhone run pending.
 - 2026-10-19: Build plan accepted, from the former `DESIGN.md`. Open questions and risks carried over from the [research](learning/sync-design-research.md#open-questions-and-risks), with their state under the accepted design.

@@ -70,7 +70,7 @@ S3 and R2 accept empty segments. The rule is stricter so that keys stay portable
 
 | Package | Transport | Runs in | Status |
 | --- | --- | --- | --- |
-| `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`). `fetch` is injectable, so the Obsidian plugin can pass a `requestUrl`-based transport. | Obsidian, Node, Workers | Existing behavior; not yet run against R2 or AWS S3 |
+| `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`). `fetch` is injectable; the Obsidian plugin passes its `requestUrl` transport ([Obsidian plugin](obsidian-plugin.md#platform)). | Obsidian, Node, Workers | Existing behavior; not yet run against R2 or AWS S3 |
 | `@obsy/storage-r2` | Native R2 binding | Cloudflare Workers | Accepted design, not implemented |
 
 ### `@obsy/storage-s3`
@@ -116,13 +116,13 @@ Cloudflare R2 and AWS S3 document these guarantees ([R2 consistency](https://dev
 
 ### Conformance suite
 
-Existing behavior. `describeStorageConformance(target)` in `@obsy/storage-testkit` registers Vitest tests against a `Storage` factory. It tests:
+Existing behavior. `describeStorageConformance(target)` in `@obsy/storage-testkit` registers Vitest tests against a `Storage` factory. The checks themselves do not need Vitest: `conformanceChecks` and `runConformanceChecks` in `@obsy/storage-testkit/portable` run the same checks anywhere, and the [platform probe](../runbooks/platform-probe.md) runs them inside Obsidian. It tests:
 
 - `get` of a missing key; create and read back with the same etag;
 - `putIfAbsent` on an existing key; `putIfMatch` with a matching, stale, made-up, or missing etag; concurrent `putIfMatch` with one etag (exactly one winner);
 - `delete`, a repeated delete, and create after delete;
 - list order (code point order, sibling prefixes such as `log/` and `logs/`), `startAfter`, `limit` and `truncated`, paging through 25 keys, and list-after-write and list-after-delete;
-- unusual keys through put, get, and list, including NFC and NFD twins; rejected keys; binary bodies (empty, all 256 byte values, 1 MiB, a subarray); and isolation from the caller's buffer;
+- unusual keys through put, get, and list, including NFC and NFD twins and a pair that only code point order sorts correctly (U+FF5E before U+1F600; UTF-16 order is the reverse); rejected keys; binary bodies (empty, all 256 byte values, 1 MiB, a subarray); and isolation from the caller's buffer;
 - the race harness:
   - **conditional create:** N writers call `putIfAbsent` on one fresh key per round. Exactly one wins each round, and the stored body is the winner's;
   - **commit log:** K writers run the commit algorithm. Each catches up by listing `log/` and reading every new entry, then claims `log/<16-digit seq>.json` with `putIfAbsent`, and catches up again on `PreconditionFailed`. Afterwards the log has no gaps and no duplicates, and every writer's every commit appears exactly once (checked by `opId`).
@@ -137,6 +137,7 @@ How to run each target is in the [storage conformance runbook](../runbooks/stora
 | --- | --- | --- |
 | `MemoryStorage` (also with random interleaving and 3-key pages) | Unit | Pass |
 | `S3Storage` + fake S3 (path-style, virtual-hosted with 2-key pages, and a fake that ignores `encoding-type`) | Unit | Pass |
+| `S3Storage` + `requestUrl` transport + fake S3 behind a fake `requestUrl` (three variants) | Unit | Pass |
 | versitygw 1.9.0 (posix backend), local Docker | Harness target, not a supported provider | Pass |
 | MinIO (Chainguard build), local Docker | Harness target, not a supported provider | Pass |
 | SeaweedFS 4.48, local Docker | Harness target, not a supported provider | Fail: list order, `\` in keys, slow conditional writes |
@@ -146,4 +147,5 @@ How to run each target is in the [storage conformance runbook](../runbooks/stora
 ## History
 
 - 2026-10-19: Interface and provider requirements accepted, from the former `DESIGN.md`.
+- 2026-10-20: The conformance checks run without Vitest, for the platform probe. Added a key pair that separates code point order from UTF-16 order.
 - 2026-10-20: Phase 0 storage spike. Implemented the interface, errors, and key rules (`@obsy/protocol`), the S3 adapter, and the testkit. Made the etag, list, error, and key contracts explicit; keys may not have empty segments. Local results in [Storage spike](../learning/storage-spike.md).

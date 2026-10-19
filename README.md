@@ -45,6 +45,7 @@ Start with [Architecture](docs/architecture.md). It links to every layer.
 | [Relay](docs/subsystems/relay.md) | Optional push and device tokens |
 | [Correctness and testing](docs/concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Development](docs/runbooks/development.md) | Setup, commands, repository layout |
+| [Platform probe](docs/runbooks/platform-probe.md) | Measuring `requestUrl`, hashing, IndexedDB, and `SecretStorage` on an iPhone |
 | [Decisions](docs/decisions/) | Why each major choice was made |
 | [Design research](docs/learning/sync-design-research.md) | The evidence, with sources, and [detailed notes](docs/learning/research-notes/) |
 | [Documentation taxonomy](docs/TAXONOMY.md) | How the docs are organised and maintained |

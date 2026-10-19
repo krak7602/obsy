@@ -1,7 +1,7 @@
 ---
 title: Documentation taxonomy
 aliases: [documentation policy, knowledge map, repository working agreement]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Documentation taxonomy
@@ -44,6 +44,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Agent SDK and CLI](subsystems/agent-sdk.md) | Agent operations, owned blocks, provenance, CLI commands |
 | [Relay](subsystems/relay.md) | Optional push, device tokens, presence |
 | [Development](runbooks/development.md) | Setup, commands, repository layout, adding packages |
+| [Platform probe](runbooks/platform-probe.md) | Building, installing, and running the iPhone platform probe; sending its report |
 | [Correctness and testing](concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Clean-room licensing](concepts/clean-room-licensing.md) | What code may and may not be read or reused |
 | [Sync design research](learning/sync-design-research.md) | The original research report (evidence, frozen) |
