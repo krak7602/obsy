@@ -10,6 +10,11 @@
     "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline",
     "lint:obsidian": "cd ../.. && eslint --max-warnings 0 --config packages/obsidian-plugin/eslint.config.mjs packages/obsidian-plugin/src manifest.json"
   },
+  "dependencies": {
+    "@obsy/protocol": "workspace:*",
+    "@obsy/storage-s3": "workspace:*",
+    "@obsy/storage-testkit": "workspace:*"
+  },
   "devDependencies": {
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",

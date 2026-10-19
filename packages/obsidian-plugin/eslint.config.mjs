@@ -8,7 +8,13 @@ import tseslint from 'typescript-eslint';
 export default defineConfig(
   // Run from the repository root (see the `lint:obsidian` script): the rules
   // read `manifest.json` from the working directory.
-  globalIgnores(['**/dist', '**/node_modules']),
+  // Tests and test support run in Node and are not part of any bundle.
+  globalIgnores([
+    '**/dist',
+    '**/node_modules',
+    'packages/obsidian-plugin/src/**/*.test.ts',
+    'packages/obsidian-plugin/src/testing/**',
+  ]),
   {
     languageOptions: {
       globals: { ...globals.browser },
