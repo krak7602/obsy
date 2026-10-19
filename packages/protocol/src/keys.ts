@@ -42,7 +42,9 @@ export function utf8ByteLength(value: string): number {
  * - not empty, and at most `MAX_KEY_BYTES` bytes of UTF-8;
  * - well-formed Unicode (no lone surrogates);
  * - no control characters (U+0000..U+001F, U+007F);
- * - does not start with `/`;
+ * - no empty path segment: no leading or trailing `/`, and no `//`.
+ *   S3 and R2 accept these, but servers that map keys to a file system
+ *   (for example the versitygw posix backend) do not;
  * - no `.` or `..` path segment, because URL parsers remove them.
  *
  * Adapters with a root prefix check the full key as well.
@@ -50,8 +52,8 @@ export function utf8ByteLength(value: string): number {
 export function checkStorageKey(key: string): void {
   if (key.length === 0) throw new InvalidKey('Key is empty');
   checkCharacters(key, 'Key');
-  if (key.startsWith('/')) throw new InvalidKey('Key starts with "/"');
   for (const segment of key.split('/')) {
+    if (segment === '') throw new InvalidKey('Key has an empty path segment');
     if (segment === '.' || segment === '..') {
       throw new InvalidKey(`Key has a "${segment}" path segment`);
     }

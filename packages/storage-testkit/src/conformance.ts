@@ -61,8 +61,6 @@ export const UNUSUAL_KEYS: readonly string[] = [
   'unusual/emoji-\u{1F600}.md',
   'unusual/fullwidth-～.md',
   'unusual/trailing-dot.',
-  'unusual/double//slash.md',
-  'unusual/ends-with-slash/',
 ];
 
 function body(text: string): Uint8Array {
@@ -355,7 +353,7 @@ export function describeStorageConformance(target: ConformanceTarget): void {
 
       it('rejects unsafe keys with InvalidKey', { timeout }, async () => {
         const storage = await target.create('invalid-keys');
-        for (const key of ['', '/abs', 'a/../b', 'a/./b', 'ctl\u0001']) {
+        for (const key of ['', '/abs', 'a//b', 'dir/', 'a/../b', 'a/./b', 'ctl\u0001']) {
           let caught: unknown;
           try {
             await storage.putIfAbsent(key, body('x'), 'text/plain');
