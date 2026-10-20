@@ -39,7 +39,8 @@ const write = (files: MemoryLocalFiles, path: string, content: string): Promise<
 const paths = (files: MemoryLocalFiles): string[] => [...files.snapshot().keys()];
 
 async function syncAll(devices: Device[], rounds = 2): Promise<void> {
-  for (let i = 0; i < rounds; i++) for (const d of devices) expect((await d.engine.sync()).settled).toBe(true);
+  for (let i = 0; i < rounds; i++)
+    for (const d of devices) expect((await d.engine.sync()).settled).toBe(true);
 }
 
 describe('SyncEngine', () => {
