@@ -4,6 +4,6 @@
   "version": "0.0.0",
   "minAppVersion": "1.12.3",
   "description": "Sync your vault through storage you own, and let scripts and AI agents edit notes safely.",
-  "author": "Rahul Krishna K A",
+  "author": "Rahul Krishna",
   "isDesktopOnly": false
 }

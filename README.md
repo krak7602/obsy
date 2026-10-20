@@ -46,7 +46,7 @@ Start with [Architecture](docs/architecture.md). It links to every layer.
 | [Correctness and testing](docs/concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Development](docs/runbooks/development.md) | Setup, commands, repository layout |
 | [Storage conformance](docs/runbooks/storage-conformance.md), [merge corpus](docs/runbooks/merge-corpus.md), and [platform probe](docs/runbooks/platform-probe.md) | Running the storage and merge test runs, and measuring `requestUrl`, hashing, IndexedDB, and `SecretStorage` on an iPhone |
-| [Phase 0 results](docs/roadmap.md#build-phases) | The [storage spike](docs/learning/storage-spike.md) and the [merge spike](docs/learning/merge-spike.md) |
+| [Phase 0 results](docs/roadmap.md#build-phases) | The [storage spike](docs/learning/storage-spike.md), the [merge spike](docs/learning/merge-spike.md), and the [iPhone probe](docs/learning/iphone-probe.md) |
 | [Decisions](docs/decisions/) | Why each major choice was made |
 | [Design research](docs/learning/sync-design-research.md) | The evidence, with sources, and [detailed notes](docs/learning/research-notes/) |
 | [Documentation taxonomy](docs/TAXONOMY.md) | How the docs are organised and maintained |

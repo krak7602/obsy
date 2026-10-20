@@ -53,6 +53,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Research notes](learning/research-notes/) | Detailed, sourced notes behind the report (evidence, frozen) |
 | [Storage spike](learning/storage-spike.md) | Phase 0 storage and conditional-create race results (evidence) |
 | [Merge spike](learning/merge-spike.md) | Phase 0 merge, oracle, and speed results (evidence) |
+| [iPhone probe](learning/iphone-probe.md) | Phase 0 iOS results: `requestUrl`, hashing, IndexedDB, `SecretStorage`, restarts, background (evidence) |
 
 Decision records are in [decisions/](decisions/).
 

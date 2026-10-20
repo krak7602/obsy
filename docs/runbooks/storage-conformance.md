@@ -84,6 +84,8 @@ In the Cloudflare dashboard:
 6. Create the token. Copy the **Access Key ID** and the **Secret Access Key**. The dashboard shows the secret only once.
 7. Copy the S3 API endpoint, `https://<account-id>.r2.cloudflarestorage.com`.
 
+Step 1 also works from the command line: `npx wrangler r2 bucket create <scratch-bucket>`. Create the token (steps 2 to 7) in the dashboard.
+
 For AWS S3, create a scratch bucket and an IAM user or role whose policy allows only `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*` and `s3:ListBucket` on `arn:aws:s3:::<bucket>`. Use temporary credentials if you can.
 
 #### Configure

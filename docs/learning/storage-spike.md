@@ -1,6 +1,6 @@
 ---
 title: Storage spike (phase 0)
-aliases: [conditional-create race test, R2 race test, storage conformance results, local S3 servers, versitygw, MinIO, SeaweedFS]
+aliases: [conditional-create race test, R2 race test, live R2 run, storage conformance results, local S3 servers, versitygw, MinIO, SeaweedFS]
 updated: 2026-10-20
 ---
 
@@ -8,11 +8,11 @@ updated: 2026-10-20
 
 ## Current
 
-Status: observed results from local runs on 2026-10-20. **The live run on Cloudflare R2 has not happened yet.** Nothing on this page shows how R2 or AWS S3 behave under a real race; it shows that the adapter, the suite, and the harness work, and how three local servers behave.
+Status: observed results from local runs and three live Cloudflare R2 runs on 2026-10-20. R2 passed every run: no race produced two winners, a gap, or a duplicate. AWS S3 has not been tested.
 
 ### Question
 
-Phase 0 on the [roadmap](../roadmap.md) asks for a conditional-create race test on R2. The [bucket-as-sequencer decision](../decisions/2026-10-19-bucket-as-sequencer.md) depends on two claims: of concurrent `If-None-Match: *` creators of one key, at most one succeeds; and a writer that lists the log and claims the next number never creates a gap or a duplicate. The spike builds the storage layer that the test needs, proves it locally, and leaves a ready live run for the owner's scratch bucket.
+Phase 0 on the [roadmap](../roadmap.md) asks for a conditional-create race test on R2. The [bucket-as-sequencer decision](../decisions/2026-10-19-bucket-as-sequencer.md) depends on two claims: of concurrent `If-None-Match: *` creators of one key, at most one succeeds; and a writer that lists the log and claims the next number never creates a gap or a duplicate. The spike builds the storage layer that the test needs, proves it locally, and then runs the same suite against a scratch R2 bucket.
 
 ### Method
 
@@ -20,7 +20,7 @@ Phase 0 on the [roadmap](../roadmap.md) asks for a conditional-create race test 
 - **Conditional-create race.** In each round, N writers call `putIfAbsent` on one fresh key at the same time. Pass: exactly one winner per round, and the stored body is the winner's.
 - **Commit-log race.** K writers run the [commit algorithm](../subsystems/protocol.md#commit-algorithm) without merges: list `log/` after the cursor (following `truncated`), read every new entry, claim `log/<cursor+1>.json` (16 digits) with `putIfAbsent`, and catch up again on `PreconditionFailed`. The writers do not back off after a conflict. Pass: the final log has entries 1 to K × C with no gap, every `opId` appears once, and every writer's every commit is present.
 - **Harness check.** A deliberately non-atomic storage (check, yield, then write) makes both races report violations. A storage that injects 429s and lost responses (write applied, then a transient error with `mayHaveApplied`) still passes. Both are unit tests.
-- **Environment.** macOS on Apple silicon, Docker Engine 28.3.0 (linux/arm64 containers), Node 24.21.0. Client and server on one host over loopback. All writers run in one Node process and send requests concurrently.
+- **Environment.** macOS on Apple silicon, Docker Engine 28.3.0 (linux/arm64 containers), Node 24.21.0. Local runs: client and server on one host over loopback. Live runs: the same host over a home internet connection to an R2 bucket in the APAC location (Standard storage class), with a token scoped to that bucket (Object Read & Write). In both cases all writers run in one Node process and send requests concurrently.
 - **Servers.** Selected because their official or maintained images were available on 2026-10-20 and a signed `curl` probe showed conditional writes:
 
   | Server | Image | Digest |
@@ -59,14 +59,37 @@ Larger run (`OBSY_RACE_CREATE_WRITERS=32`, `OBSY_RACE_CREATE_ROUNDS=200`, `OBSY_
 
 Default local run (16 × 50 create, 8 × 25 log): versitygw 800 requests, p99 6.4 ms, 590 claims for 200 commits, at most 100 claims for one commit; MinIO p99 108.7 ms, 430 claims, at most 47. SeaweedFS (16 × 5 create, 8 × 25 log): `putIfAbsent` p50 6.6 ms but p90 4,022 ms and max 12,028 ms; claim p99 1,003.5 ms.
 
-No server returned a 409, 429, or 5xx in any recorded run. Every race failure was a 412.
+No local server returned a 409, 429, or 5xx in any recorded run. Every race failure was a 412.
+
+#### Cloudflare R2
+
+`pnpm run test:s3-live`, 22/22 tests pass in each run, including the unusual-keys test with `encoding-type=url`. Each run deleted all its keys afterwards.
+
+| Measure | Defaults | 32 create writers | Heavy |
+| --- | --- | --- | --- |
+| Parameters (create writers × rounds; log writers × commits; list limit) | 8 × 20; 4 × 10; 5 | 32 × 20; 8 × 10; 5 | 16 × 50; 8 × 25; 10 |
+| Create race: rounds with one winner | 20/20 | 20/20 | 50/50 |
+| Create race: outcomes | 20 success, 140 `PreconditionFailed` | 20 success, 620 `PreconditionFailed`, 15 `ServiceUnavailable` | 50 success, 750 `PreconditionFailed`, 12 `ServiceUnavailable` |
+| Create race: `putIfAbsent` p50 / p90 / p99 / max | 317 / 397 / 515 / 544 ms | 340 / 501 / 597 / 856 ms | 312 / 387 / 669 / 9,732 ms |
+| Log race: entries | 40, no gaps, no duplicates | 80, no gaps, no duplicates | 200, no gaps, no duplicates |
+| Log race: claim attempts / conflicts / most claims for one commit | 104 / 64 / 28 | 383 / 303 / 63 | 937 / 737 / 128 |
+| Log race: other outcomes | none | none | 2 `ServiceUnavailable` on list |
+| Log race: claim p50 / p99 | 206 / 367 ms | 175 / 481 ms | 157 / 494 ms |
+| Log race: list p50 / p99 / max | 105 / 309 / 333 ms | 109 / 235 / 309 ms | 109 / 253 / 5,354 ms |
+| Duration (whole file) | 86 s | 126 s | 243 s |
+
+Observations:
+
+- Under contention on one key, R2 returned **503 `ServiceUnavailable`**, not the documented 429 `TooManyRequests`. No run saw a 429, 409, or 500.
+- The adapter treats a 503 other than `SlowDown` on a write as `mayHaveApplied`. The harness resolves such a failure by reading the key back; every round still had exactly one winner. R2 does not document whether a 503 on a conditional PUT can have applied, so the conservative mapping stays.
+- Latency outliers came with the 503s: one `putIfAbsent` took 9.7 s and one list took 5.4 s, in the heavy run only.
 
 ### Provider findings
 
 From documentation (read on 2026-10-20):
 
 - **AWS S3.** `If-None-Match: *` on an existing key returns 412; "the first write operation to finish succeeds". A 409 can occur "if a delete request to an object succeeds before a conditional write operation on that object completes", and PutObject "may be retried after receiving a `409 Conflict`". The PutObject reference names it `409 ConditionalRequestConflict`: "On a 409 failure, retry the upload"; for `If-Match`, "fetch the object's ETag and retry". `If-Match` on a missing key returns 404 ([conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html); [PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)). Decision: 409 is a transient error that did not apply; 404 on `putIfMatch` is `PreconditionFailed`.
-- **Cloudflare R2.** `PreconditionFailed` is 412, with the advice "Refetch and retry". `TooManyRequests` is 429, "often caused by multiple concurrent requests to the same object key (limit: 1 write/second per key)". `InternalError` 500: "Retry the request". `ServiceUnavailable` 503: "Retry with exponential backoff" ([R2 error codes](https://developers.cloudflare.com/r2/api/error-codes/)). ListObjectsV2 supports `encoding-type`, `start-after`, `continuation-token`, and `max-keys`; the S3 region is `auto` ([R2 S3 API](https://developers.cloudflare.com/r2/api/s3/api/)). Expectation for the live run: a race on one key can produce 429s as well as 412s. The harness counts them by code and retries them.
+- **Cloudflare R2.** `PreconditionFailed` is 412, with the advice "Refetch and retry". `TooManyRequests` is 429, "often caused by multiple concurrent requests to the same object key (limit: 1 write/second per key)". `InternalError` 500: "Retry the request". `ServiceUnavailable` 503: "Retry with exponential backoff" ([R2 error codes](https://developers.cloudflare.com/r2/api/error-codes/)). ListObjectsV2 supports `encoding-type`, `start-after`, `continuation-token`, and `max-keys`; the S3 region is `auto` ([R2 S3 API](https://developers.cloudflare.com/r2/api/s3/api/)). Expectation before the live run: a race on one key can produce 429s as well as 412s. Observed: 503s, not 429s ([results](#cloudflare-r2)).
 - **MinIO distribution.** Secondary sources report that MinIO stopped publishing community images in October 2025, put the repository in maintenance mode in December 2025, and archived it in February 2026 (for example [this summary](https://blog.vonng.com/en/db/minio-resurrect/index.md)). Not checked against a MinIO announcement. Observed: `minio/minio:latest` was not available.
 
 Observed locally:
@@ -82,25 +105,26 @@ Observed locally:
 ### Lessons
 
 - **The harness has teeth.** It catches a non-atomic create, and it tolerates rate limits and lost responses. That makes a passing live run meaningful.
-- **Conflict storms are real.** With 16 writers and no backoff after a conflict, one commit needed up to 216 claims. With few devices this matters less, but `@obsy/core` should add jittered backoff after `PreconditionFailed` on a log claim. On R2 the 1-write-per-second-per-key limit may turn some of these conflicts into 429s.
+- **R2 conditional creates are atomic under these races.** 90 contested rounds with 8 to 32 writers each produced exactly one winner every time, and 320 log commits from 4 to 8 concurrent writers (1,104 lost claims) left no gap and no duplicate. This supports the [bucket-as-sequencer decision](../decisions/2026-10-19-bucket-as-sequencer.md).
+- **Conflict storms are real.** With 16 writers and no backoff after a conflict, one commit needed up to 216 claims locally. On R2, 8 writers needed up to 128 claims for one commit, and same-key contention produced 503s. With few devices this matters less, but `@obsy/core` should add jittered backoff after `PreconditionFailed` on a log claim, and treat R2's 503 as a signal to back off.
 - **Lost responses are safe by construction (reasoning, not a live test).** A writer that times out on `log/<n>` cannot later produce a duplicate commit. To claim a higher number it must first see `log/<n>`. If its own delayed write created `log/<n>`, catch-up finds its `opId`; otherwise its delayed write fails with 412.
 - **Do not trust "S3-compatible".** Two of three local servers passed; the third broke list order and changed key bytes. Keep the provider list closed until a provider passes the suite.
 
 ### Limits
 
-- Loopback on one host: no WAN latency, no multi-region effects, no rate limits.
+- Local runs: loopback on one host, so no WAN latency, no multi-region effects, and no rate limits.
+- Live runs: one client host, one network, one bucket location, three runs on one day. Passing runs show no violation was found, not that none can happen.
 - All writers ran in one Node process. Real devices are separate clients with independent clocks and networks.
 - The fake S3 endpoint checks SigV4 header shape and the payload hash, but not signatures. The local servers verify real signatures.
 - The MinIO image is `latest`; the digest above identifies the build that ran.
 - The suite does not test `limit` above 1,000 against a server, or bodies larger than 1 MiB.
 
-### What still needs the live run
+### Still open
 
-1. Run `pnpm run test:s3-live` against a scratch R2 bucket with the defaults, then with more writers (for example `OBSY_RACE_CREATE_WRITERS=32 OBSY_RACE_LOG_WRITERS=8`).
-2. Record the outcomes by code (412 against 429 against 5xx), the latency percentiles, and whether the unusual-keys test passes with R2's `encoding-type=url` handling.
-3. Optionally repeat on AWS S3, and look for `409 ConditionalRequestConflict`.
-4. Add the results here, update the provider table on [Storage adapters](../subsystems/storage.md#conformance-suite), and settle the roadmap question.
+- AWS S3 is untested. A run there would look for `409 ConditionalRequestConflict`.
+- The same suite runs inside Obsidian through the [platform probe](../runbooks/platform-probe.md). The iPhone run is pending.
 
 ## History
 
-- 2026-10-20: Spike run locally: in-memory, fake S3, versitygw, MinIO, and SeaweedFS. Live R2 run pending.
+- 2026-10-20: Live R2 runs (defaults, 32 create writers, heavy): all pass; R2 returns 503 under same-key contention.
+- 2026-10-20: Spike run locally: in-memory, fake S3, versitygw, MinIO, and SeaweedFS.

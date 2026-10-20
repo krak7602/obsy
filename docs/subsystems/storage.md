@@ -11,7 +11,7 @@ updated: 2026-10-20
 Status:
 
 - **Existing behavior** (phase 0 storage spike): the `Storage` interface, its errors, and the key rules in `@obsy/protocol`; the S3 adapter `@obsy/storage-s3`; and `@obsy/storage-testkit` with an in-memory `Storage`, the conformance suite, the race harness, and a fake S3 endpoint.
-- **Verified locally only.** The suite passes against the in-memory storage, the fake S3 endpoint, and two local S3-compatible servers in Docker. It has not run against Cloudflare R2 or AWS S3 yet. The results are in [Storage spike](../learning/storage-spike.md).
+- **Verified on R2 and locally.** The suite passes against the in-memory storage, the fake S3 endpoint, two local S3-compatible servers in Docker, and a live Cloudflare R2 bucket (three runs, up to 32 concurrent writers). It has not run against AWS S3. The results are in [Storage spike](../learning/storage-spike.md).
 - **Accepted design, not implemented:** `@obsy/storage-r2` (the Workers binding).
 
 ### Interface
@@ -70,7 +70,7 @@ S3 and R2 accept empty segments. The rule is stricter so that keys stay portable
 
 | Package | Transport | Runs in | Status |
 | --- | --- | --- | --- |
-| `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`). `fetch` is injectable; the Obsidian plugin passes its `requestUrl` transport ([Obsidian plugin](obsidian-plugin.md#platform)). | Obsidian, Node, Workers | Existing behavior; not yet run against R2 or AWS S3 |
+| `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`). `fetch` is injectable; the Obsidian plugin passes its `requestUrl` transport ([Obsidian plugin](obsidian-plugin.md#platform)). | Obsidian, Node, Workers | Existing behavior; passes on R2 from Node; not yet run against AWS S3 or inside Obsidian |
 | `@obsy/storage-r2` | Native R2 binding | Cloudflare Workers | Accepted design, not implemented |
 
 ### `@obsy/storage-s3`
@@ -97,6 +97,7 @@ Status mapping:
 | 409 (for example `ConditionalRequestConflict`) | `TransientStorageError` | no | [AWS PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html): "On a 409 failure, retry the upload" |
 | 429 | `TransientStorageError`, with `retryAfterMs` | no | R2 `TooManyRequests`, "limit: 1 write/second per key" |
 | 503 `SlowDown` | `TransientStorageError` | no | |
+| 503 other codes | `TransientStorageError` | yes, for writes | R2 returned 503 `ServiceUnavailable` under same-key contention ([evidence](../learning/storage-spike.md#cloudflare-r2)) |
 | other 5xx | `TransientStorageError` | yes, for writes | R2 `InternalError`: "Retry the request" |
 | 400 `RequestTimeout` | `TransientStorageError` | no | |
 | timeout, network error | `TransientStorageError` (`Timeout`, `NetworkError`) | yes, for writes | |
@@ -112,7 +113,7 @@ Accepted design. The [protocol](protocol.md) uses the bucket as the commit seque
 - Strong read-after-write and list-after-write consistency.
 - `If-Match` on PUT for the few mutable objects.
 
-Cloudflare R2 and AWS S3 document these guarantees ([R2 consistency](https://developers.cloudflare.com/r2/reference/consistency/); [AWS conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)). They are the only supported providers in version 1. See [Supported storage providers](../decisions/2026-10-19-supported-storage-providers.md). A live conformance run on each is still open.
+Cloudflare R2 and AWS S3 document these guarantees ([R2 consistency](https://developers.cloudflare.com/r2/reference/consistency/); [AWS conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)). They are the only supported providers in version 1. See [Supported storage providers](../decisions/2026-10-19-supported-storage-providers.md). R2 passed a live conformance run on 2026-10-20 ([evidence](../learning/storage-spike.md#cloudflare-r2)). AWS S3 has not been run.
 
 ### Conformance suite
 

@@ -38,7 +38,7 @@ Read [README.md](README.md) for the repository entry point. Then select the rele
 | The `Storage` interface, a provider adapter, or the conformance suite | [Storage adapters](docs/subsystems/storage.md), then [conformance runbook](docs/runbooks/storage-conformance.md) and [storage spike](docs/learning/storage-spike.md) |
 | Merging, conflict copies, or deletes | [Merge and conflicts](docs/subsystems/merge.md), then [merge spike](docs/learning/merge-spike.md) and [merge decision](docs/decisions/2026-10-19-three-way-merge-not-crdt.md) |
 | The Obsidian plugin, iOS behavior, or the Obsidian API | [Obsidian plugin](docs/subsystems/obsidian-plugin.md), then [platform notes](docs/learning/research-notes/obsidian-platform.md) |
-| The platform probe or iPhone measurements | [Platform probe](docs/runbooks/platform-probe.md) |
+| The platform probe or iPhone measurements | [Platform probe](docs/runbooks/platform-probe.md), then [iPhone probe results](docs/learning/iphone-probe.md) |
 | Agent operations or the `obsy` CLI | [Agent SDK and CLI](docs/subsystems/agent-sdk.md) |
 | The optional Cloudflare relay | [Relay](docs/subsystems/relay.md), then [Cloudflare notes](docs/learning/research-notes/cloudflare-building-blocks.md) |
 | Tests, the simulator, or invariants | [Correctness and testing](docs/concepts/correctness-and-testing.md), then [merge corpus runbook](docs/runbooks/merge-corpus.md) |

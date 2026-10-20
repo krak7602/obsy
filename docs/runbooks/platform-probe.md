@@ -10,7 +10,7 @@ updated: 2026-10-20
 
 This page owns how to build, install, and run the Obsy probe, and how to send back its report. The probe answers the phase 0 question on the [roadmap](../roadmap.md): do `requestUrl`, `SubtleCrypto` hashing, IndexedDB, and `SecretStorage` behave on iOS Obsidian as the design assumes? The design that depends on the answers is on [Obsidian plugin](../subsystems/obsidian-plugin.md).
 
-Status: the probe is built and its sections pass Node tests against fakes. **It has not run in Obsidian, on desktop or on an iPhone.** Record the results on a new learning page when they exist.
+Status: the probe is built and its sections pass Node tests against fakes. It ran once on an iPhone on 2026-10-20, installed with Method A; every section passed ([results](../learning/iphone-probe.md)). It has not run on desktop.
 
 > [!warning] Scratch vault and scratch bucket only
 > Never install the probe in a real vault. Never point it at a bucket that holds a vault. The probe writes and deletes files in the vault and objects in the bucket.
@@ -81,7 +81,7 @@ Use a bucket that holds nothing else. Follow [Make a scratch R2 bucket and a sco
 
 ### Install on iPhone, without a GitHub release
 
-No method below has been tried with this probe yet.
+Method A worked on 2026-10-20. Method B has not been tried.
 
 **Method A: an iCloud scratch vault, filled from a Mac.**
 
@@ -140,6 +140,7 @@ Optional: restart the phone itself and repeat step 3 to 4.
 The report is one JSON object with `schema: "obsy-probe-report"` and `schemaVersion: 1`. It holds all results of this plugin session and the restart check.
 
 - **Copy report** puts it on the clipboard. If the clipboard fails on iOS, the report text is selected so that you can copy it by hand.
+- Wait until the status line says **idle** before you copy or save. A report taken during a run holds only the sections that have finished.
 - **Save report to vault** writes `Obsy probe report <time>.md` in the vault root. Share that note from Obsidian or the Files app.
 
 Redaction: the probe replaces the endpoint, its host, the R2 account ID, the bucket name, the credentials, the test secret, and the vault folder path with placeholders such as `<endpoint>` and `<bucket>`. It also replaces any URL, 32-digit hex string, AWS access key ID, 12-digit number, and absolute path. Before it shows or copies the report, it checks that none of these values remains, and it withholds the report if one does. The report keeps the provider guess (`r2`, `aws-s3`, or `other`), the region, the user agent, and the WebView origin. Read the report once before you send it.

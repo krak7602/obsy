@@ -14,7 +14,7 @@ The plugin uses `@obsy/core` and `@obsy/storage-s3`, or the [relay](relay.md)'s 
 
 ### Lifecycle
 
-Sync after `onLayoutReady`, on `visibilitychange` to visible, after saves (debounced 2 s after the last edit), and on a 30 s timer while visible. Pause on hidden. Never rely on `quit`. iOS gives plugins no background time.
+Sync after `onLayoutReady`, on `visibilitychange` to visible, after saves (debounced 2 s after the last edit), and on a 30 s timer while visible. Pause on hidden. Never rely on `quit`. iOS gives plugins no background time: on an iPhone, JavaScript ran for about 3.5 to 4 s after the app was hidden, then stopped, and the request in flight failed at resume ([evidence](../learning/iphone-probe.md#background-behavior)). On hidden, write the journal and start nothing large. Timers do not fire while the app is suspended, so timeouts and backoff can run long.
 
 ### Change detection
 
@@ -54,7 +54,7 @@ Pure TypeScript, no Node APIs, no WASM, `isDesktopOnly: false`, `minAppVersion` 
 
 Existing behavior: `createRequestUrlFetch` (`packages/obsidian-plugin/src/transport/request-url-fetch.ts`) is the `fetch` that the plugin passes to `S3Storage`. It sends every header unchanged, sets `throw: false` so that 4xx and 5xx come back as responses with headers and bodies, matches response header names without regard to case, and sends `ArrayBuffer` bodies with exactly the view's bytes. `requestUrl` has no timeout and no abort, so the transport times out on the client (default 30 s) and honours an abort signal; the underlying request keeps running and its result is ignored. If `requestUrl` throws for a status despite `throw: false`, the transport turns the error back into a response. Node tests run the full conformance suite through it against the fake S3 endpoint.
 
-Open: whether `requestUrl`, `SubtleCrypto`, IndexedDB, and `SecretStorage` behave this way on iOS. The [platform probe](../runbooks/platform-probe.md) measures them; the iPhone run is pending.
+Observed on an iPhone (iOS 18.7, Obsidian 1.14.5): the transport passes 20 conformance checks and a conditional-create race over R2; the global `fetch` is blocked without bucket CORS; SHA-256 runs at about 2 GB/s; IndexedDB, `localStorage`, and `SecretStorage` survive an app kill; an IndexedDB transaction does not survive `await crypto.subtle`, so hash first; `navigator.storage.persist()` returns false; `Platform.isMacOS` is true on iOS, so use `isDesktopApp` and `isIosApp`. See [iPhone probe](../learning/iphone-probe.md).
 
 The platform evidence is in the [Obsidian platform research notes](../learning/research-notes/obsidian-platform.md).
 
@@ -67,5 +67,6 @@ The community directory reads `manifest.json` from the root of the default branc
 ## History
 
 - 2026-10-20: Plugin shell scaffolded; build and distribution rules recorded.
+- 2026-10-20: iPhone probe results added to Lifecycle and Platform.
 - 2026-10-20: Added the `requestUrl` transport and the platform probe build.
 - 2026-10-19: Plugin design accepted, from the former `DESIGN.md`.
