@@ -20,7 +20,8 @@
     }
   },
   "scripts": {
-    "build": "vp pack"
+    "build": "vp pack",
+    "test:live": "bash scripts/r2-live.sh test"
   },
   "dependencies": {
     "@obsy/protocol": "workspace:*"

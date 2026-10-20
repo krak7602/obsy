@@ -20,8 +20,7 @@ Run the commands from the repository root.
 | Obsy probe, **Storage over requestUrl** | `S3Storage` over `requestUrl`, inside Obsidian, against a scratch bucket | Obsidian, a scratch vault, and a scratch bucket ([platform probe](platform-probe.md)) | No |
 | `pnpm run test:s3-local` | `S3Storage` against a local S3-compatible server in Docker | Docker, `curl`, `openssl` | No |
 | `pnpm run test:s3-live` | `S3Storage` against a real R2 or AWS S3 bucket | A scratch bucket and a token scoped to it | No |
-
-A live run of `R2Storage` needs a Worker with an R2 binding, deployed to Cloudflare; it is not set up yet.
+| `pnpm run test:r2-live` | `R2Storage` in a temporary test Worker, against a real R2 bucket through its binding | A scratch R2 bucket and `wrangler login` | No |
 
 The local servers and Miniflare are **harness targets, not supported providers**. They exercise the adapter against real HTTP, real SigV4 verification, and real concurrency. They do not show that R2 or AWS S3 behave the same way.
 
@@ -70,7 +69,7 @@ bash packages/storage-s3/scripts/s3-local.sh stop
 bash packages/storage-s3/scripts/s3-local.sh status
 ```
 
-### Live R2 or AWS S3 run
+### Live R2 or AWS S3 run (S3 API)
 
 Use a scratch bucket that holds nothing else. Never use a bucket that holds a vault.
 
@@ -126,6 +125,26 @@ With the defaults, one run sent about 630 requests to the fake endpoint (361 PUT
 - If a run is interrupted, keys can remain under `obsy-conformance/`. Delete that prefix in the dashboard, or delete the scratch bucket.
 - When you are done, revoke the token and delete `.env.local`.
 
+### Live R2 binding run
+
+This run deploys a Worker to your Cloudflare account. Run it only on a scratch bucket that holds nothing else.
+
+1. Log in once: `npx wrangler login`. The account needs a `workers.dev` subdomain.
+2. Set the scratch bucket: `OBSY_R2_BUCKET`, or `OBSY_S3_BUCKET` in `.env.local`.
+3. Run `pnpm run test:r2-live`. To keep the summary, add `OBSY_R2_REPORT_FILE=/tmp/obsy-r2-report.md` in front. The `OBSY_RACE_*` variables apply.
+
+The script `packages/storage-r2/scripts/r2-live.sh`:
+
+1. Writes a Wrangler config for the Worker `obsy-r2-conformance` (`packages/storage-r2/live/worker.ts`) into a temporary directory, so that the bucket name stays out of the repository.
+2. Makes a random bearer token for this run and deploys the Worker with the token as a secret. The Worker answers 404 to any request without the token, and touches only keys under `obsy-conformance/`.
+3. Waits until the Worker answers ten times in a row.
+4. Runs `packages/storage-r2/test/live.integration.test.ts`. Each `Storage` call is one request to the Worker, where `R2Storage` runs. Failures between Node and the Worker are transient errors with a `worker-` code.
+5. Always deletes the Worker and the temporary directory, also when the tests fail.
+
+Cleanup of keys is the same as for the S3 API run: the run writes and deletes only `obsy-conformance/<run id>/`. If the script is interrupted, delete the Worker with `bash packages/storage-r2/scripts/r2-live.sh delete`, or in the dashboard.
+
+One run at defaults sends about as many requests as the S3 API run, plus the deploy, well inside the Workers free tier.
+
 ## History
 
-- 2026-10-20: Created with the phase 0 storage spike.
+- 2026-10-20: Created with the phase 0 storage spike. Added the live R2 binding run.

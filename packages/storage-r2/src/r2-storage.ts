@@ -39,6 +39,15 @@ export interface R2BucketLike {
   }>;
 }
 
+/**
+ * The R2 error code from a binding error message, for example `10001` from
+ * `put: We encountered an internal error. Please try again. (10001)`.
+ */
+function r2ErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  return /\((\d{5})\)\s*$/.exec(error.message)?.[1];
+}
+
 export interface R2StorageOptions {
   /** Root prefix for every key, for example `vaults/main/`. Empty or ending in `/`. */
   readonly prefix?: string;
@@ -92,8 +101,10 @@ export class R2Storage implements Storage {
       return await action();
     } catch (error) {
       if (error instanceof StorageError) throw error;
+      const code = r2ErrorCode(error);
       throw new TransientStorageError(`${operation} ${key}: R2 binding error`, {
         mayHaveApplied: write,
+        ...(code === undefined ? {} : { code }),
         cause: error,
       });
     }
