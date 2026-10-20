@@ -2,7 +2,7 @@
 
 Sync an Obsidian vault through storage you own, and let scripts and AI agents edit the same notes safely.
 
-Status: design accepted; phase 1 in progress. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. There is no Obsidian sync plugin yet.
+Status: design accepted; phase 1 done. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. There is no Obsidian sync plugin yet.
 
 ## What it is
 

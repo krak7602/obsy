@@ -8,6 +8,7 @@ import {
   deleteAllUnder,
   describeStorageConformance,
   formatRaceResult,
+  raceFromSettings,
 } from '@obsy/storage-testkit';
 import type { RaceParameters } from '@obsy/storage-testkit';
 import { afterAll, describe, it } from 'vite-plus/test';
@@ -20,23 +21,9 @@ export function loadEnvFile(path: string): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
-function positiveInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`);
-  return value;
-}
-
 /** Race parameters from `OBSY_RACE_*` variables, with `defaults` for unset ones. */
 export function raceFromEnv(defaults: RaceParameters = DEFAULT_RACE): RaceParameters {
-  return {
-    createWriters: positiveInt('OBSY_RACE_CREATE_WRITERS', defaults.createWriters),
-    createRounds: positiveInt('OBSY_RACE_CREATE_ROUNDS', defaults.createRounds),
-    logWriters: positiveInt('OBSY_RACE_LOG_WRITERS', defaults.logWriters),
-    commitsPerWriter: positiveInt('OBSY_RACE_COMMITS_PER_WRITER', defaults.commitsPerWriter),
-    listLimit: positiveInt('OBSY_RACE_LIST_LIMIT', defaults.listLimit),
-  };
+  return raceFromSettings(process.env, defaults);
 }
 
 export interface RunOptions {

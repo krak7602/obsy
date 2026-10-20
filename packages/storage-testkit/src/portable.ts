@@ -30,6 +30,7 @@ export type {
   RetryPolicy,
 } from './race';
 export { formatRaceResult } from './report';
+export { raceFromSettings } from './settings';
 export { deleteAllUnder } from './cleanup';
 export { createFakeS3 } from './fake-s3';
 export type {

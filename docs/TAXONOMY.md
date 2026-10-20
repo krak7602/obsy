@@ -56,6 +56,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Merge spike](learning/merge-spike.md) | Phase 0 merge, oracle, and speed results (evidence) |
 | [Merge diff replacement](learning/merge-diff.md) | Phase 0 diff survey, Myers diff results, and the generated corpus on real notes (evidence) |
 | [Simulator, phase 1](learning/simulator-phase1.md) | One million seeds, bugs found, mutation check (evidence) |
+| [R2 binding live run](learning/r2-binding-live.md) | `@obsy/storage-r2` conformance on real R2 through a test Worker (evidence) |
 | [iPhone probe](learning/iphone-probe.md) | Phase 0 iOS results: `requestUrl`, hashing, IndexedDB, `SecretStorage`, restarts, background (evidence) |
 
 Decision records are in [decisions/](decisions/).
