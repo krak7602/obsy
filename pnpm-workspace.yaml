@@ -11,6 +11,7 @@ catalog:
   '@codemirror/view': 6.43.13
   '@types/node': 24.19.2 # Match the Node major in mise.toml; test code only
   aws4fetch: 1.0.20
+  fake-indexeddb: 6.2.5 # Apache-2.0; IndexedDB for Node tests of the plugin
   fast-check: 4.10.2
   obsidian: 1.14.4
   rolldown: 1.2.14 # Match the version from `vp toolchain`

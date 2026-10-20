@@ -48,6 +48,7 @@ export interface SimResult {
     conflictCopies: number;
     agentWrites: number;
     syncsStarted: number;
+    pullOnlySyncs: number;
     syncsDone: number;
     syncErrors: number;
   };
@@ -122,6 +123,7 @@ class World {
     conflictCopies: 0,
     agentWrites: 0,
     syncsStarted: 0,
+    pullOnlySyncs: 0,
     syncsDone: 0,
     syncErrors: 0,
   };
@@ -142,6 +144,9 @@ class World {
         env: this.env,
         actorId: name,
         deviceName: name,
+        // Limits too high to trip, so that the rail check runs on every pass.
+        // Simulated users often delete every file.
+        rails: { maxFiles: 1000, minFiles: 1000, emptyVault: false },
       });
       this.devices.push({ name, files, engine, online: true });
     }
@@ -171,8 +176,11 @@ class World {
   startSync(device: Device): void {
     if (!device.online || this.scheduler.running(device.name)) return;
     this.stats.syncsStarted++;
+    // Some syncs are pull-only, as on a device that joins a vault.
+    const pullOnly = this.random.next() < 0.2;
+    if (pullOnly) this.stats.pullOnlySyncs++;
     this.scheduler.spawn(device.name, async () => {
-      const report = await device.engine.sync();
+      const report = await device.engine.sync({ pullOnly });
       this.stats.syncsDone++;
       this.stats.commits += report.commits;
       this.stats.conflictCopies += report.conflictCopies;

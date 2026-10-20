@@ -12,7 +12,15 @@ export type {
   SyncedFile,
 } from './host';
 export { RemoteVault, withRetry, type ClaimResult } from './remote';
-export { SyncEngine, type SyncEngineOptions, type SyncReport } from './engine';
+export {
+  SafetyRailError,
+  SyncEngine,
+  type SafetyRails,
+  type SyncEngineOptions,
+  type SyncReport,
+  type SyncRunOptions,
+} from './engine';
+export { verifyLocal, type VerifyProblem, type VerifyReport } from './verify';
 export { initVault, webEnvironment } from './vault';
 export { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
 export { AgentWriter, type AgentResult } from './agent';
