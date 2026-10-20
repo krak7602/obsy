@@ -1,4 +1,5 @@
-import { diff3MergeRegions } from 'node-diff3';
+import { DiffWorkLimitExceeded, WorkBudget } from './diff';
+import { diff3Regions } from './diff3';
 
 /** A range of lines: `start` is a 0-based line index, `length` a line count. */
 export interface LineRange {
@@ -22,7 +23,12 @@ export type LineMergeResult =
       /** Regions where one side's insert contained the other's, kept once. */
       readonly containedInserts: number;
     }
-  | { readonly clean: false; readonly conflicts: LineConflict[] };
+  | {
+      readonly clean: false;
+      readonly conflicts: LineConflict[];
+      /** True when a diff exceeded its work limit; `conflicts` may then be empty. */
+      readonly workLimitExceeded: boolean;
+    };
 
 function sameLines(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
@@ -150,6 +156,12 @@ class MergeState {
   readonly conflicts: LineConflict[] = [];
   unionInserts = 0;
   containedInserts = 0;
+  workLimitExceeded = false;
+  readonly budget: WorkBudget;
+
+  constructor(workLimit: number | undefined) {
+    this.budget = new WorkBudget(workLimit);
+  }
 
   /** Merges one segment. Offsets map segment indices to indices in the full lists. */
   segment(
@@ -166,21 +178,29 @@ class MergeState {
       this.lines.push(...b);
       return;
     }
-    for (const region of diff3MergeRegions(a, o, b)) {
+    let regions;
+    try {
+      regions = diff3Regions(a, o, b, this.budget);
+    } catch (error) {
+      if (!(error instanceof DiffWorkLimitExceeded)) throw error;
+      this.workLimitExceeded = true;
+      return;
+    }
+    for (const region of regions) {
       if (region.stable) {
-        this.lines.push(...region.bufferContent);
-      } else if (sameLines(region.aContent, region.bContent)) {
-        this.lines.push(...region.aContent);
-      } else if (region.oLength === 0) {
-        const resolution = resolveInserts(region.bContent, region.aContent);
+        this.lines.push(...region.lines);
+      } else if (sameLines(region.a.lines, region.b.lines)) {
+        this.lines.push(...region.a.lines);
+      } else if (region.o.length === 0) {
+        const resolution = resolveInserts(region.b.lines, region.a.lines);
         this.lines.push(...resolution.lines);
         if (resolution.kind === 'union') this.unionInserts++;
         else this.containedInserts++;
       } else {
         this.conflicts.push({
-          base: { start: offset.o + region.oStart, length: region.oLength },
-          ours: { start: offset.a + region.aStart, length: region.aLength },
-          theirs: { start: offset.b + region.bStart, length: region.bLength },
+          base: { start: offset.o + region.o.start, length: region.o.length },
+          ours: { start: offset.a + region.a.start, length: region.a.length },
+          theirs: { start: offset.b + region.b.start, length: region.b.length },
         });
       }
     }
@@ -189,11 +209,12 @@ class MergeState {
 
 export interface MergeLinesOptions {
   /**
-   * Split the lists at anchor lines before the diff. Default true. Without
-   * anchors, node-diff3 aligns the whole lists, which is slow for long
-   * notes. Tests turn this off to compare the two alignments.
+   * Split the lists at anchor lines before the diff. Default true. Tests
+   * turn this off to compare the two alignments.
    */
   readonly anchors?: boolean;
+  /** Work limit for the whole merge, in line comparisons (see `WorkBudget`). */
+  readonly workLimit?: number;
 }
 
 /**
@@ -206,8 +227,9 @@ export interface MergeLinesOptions {
  * - Any other pair of changes that overlap or touch is a conflict.
  *
  * Lines that all three lists share at the start are set aside first. The
- * rest is split at anchor lines (see `findAnchors`), and node-diff3 merges
- * each segment.
+ * rest is split at anchor lines (see `findAnchors`), and each segment is
+ * merged with `diff3Regions`. When a diff exceeds its work limit, the
+ * result is not clean and `workLimitExceeded` is set.
  *
  * Lines shared at the end are not set aside. Doing so moves an ambiguous
  * insert or delete among repeated lines (often blank lines) to its earliest
@@ -230,7 +252,7 @@ export function mergeLines(
   const a = ours.slice(prefix);
   const b = theirs.slice(prefix);
 
-  const state = new MergeState();
+  const state = new MergeState(options.workLimit);
   state.lines.push(...base.slice(0, prefix));
   const anchors = (options.anchors ?? true) ? findAnchors(o, a, b) : [];
   let from: Anchor = { o: 0, a: 0, b: 0 };
@@ -244,7 +266,13 @@ export function mergeLines(
     from = { o: anchor.o + 1, a: anchor.a + 1, b: anchor.b + 1 };
   }
 
-  if (state.conflicts.length > 0) return { clean: false, conflicts: state.conflicts };
+  if (state.conflicts.length > 0 || state.workLimitExceeded) {
+    return {
+      clean: false,
+      conflicts: state.conflicts,
+      workLimitExceeded: state.workLimitExceeded,
+    };
+  }
   return {
     clean: true,
     lines: state.lines,

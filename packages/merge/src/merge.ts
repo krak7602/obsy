@@ -63,6 +63,11 @@ export type MergeConflict =
     }
   /** The sides changed the line-ending style in different ways. */
   | { readonly kind: 'line-endings' }
+  /**
+   * Aligning the body needed more work than the merge allows, for example
+   * after heavy reordering of a long note. The merge gives up safely.
+   */
+  | { readonly kind: 'work-limit' }
   | FrontmatterConflict;
 
 export interface CleanMerge {
@@ -191,6 +196,7 @@ export function merge3(input: MergeInput): MergeResult {
     if (body.unionInserts > 0) rules.add('union-insert');
     if (body.containedInserts > 0) rules.add('contained-insert');
   } else {
+    if (body.workLimitExceeded) conflicts.push({ kind: 'work-limit' });
     for (const region of body.conflicts) {
       conflicts.push({
         kind: 'lines',
