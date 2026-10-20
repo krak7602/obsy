@@ -1,6 +1,11 @@
 packages:
   - packages/*
 
+# Miniflare's workerd ships its binary in a platform package; its install
+# script is not needed for the local R2 tests.
+allowBuilds:
+  workerd: false
+
 catalog:
   '@codemirror/state': 6.7.6
   '@codemirror/view': 6.43.13

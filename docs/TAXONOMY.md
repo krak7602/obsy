@@ -46,6 +46,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Development](runbooks/development.md) | Setup, commands, repository layout, adding packages |
 | [Storage conformance](runbooks/storage-conformance.md) | Running the conformance suite locally in Docker and against a live bucket |
 | [Merge corpus](runbooks/merge-corpus.md) | Running the merge against a private corpus, and the heavy synthetic tests |
+| [Simulator](runbooks/simulator.md) | Running the deterministic simulator, the million-seed run, and replaying a seed |
 | [Platform probe](runbooks/platform-probe.md) | Building, installing, and running the iPhone platform probe; sending its report |
 | [Correctness and testing](concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Clean-room licensing](concepts/clean-room-licensing.md) | What code may and may not be read or reused |
@@ -54,6 +55,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Storage spike](learning/storage-spike.md) | Phase 0 storage and conditional-create race results (evidence) |
 | [Merge spike](learning/merge-spike.md) | Phase 0 merge, oracle, and speed results (evidence) |
 | [Merge diff replacement](learning/merge-diff.md) | Phase 0 diff survey, Myers diff results, and the generated corpus on real notes (evidence) |
+| [Simulator, phase 1](learning/simulator-phase1.md) | One million seeds, bugs found, mutation check (evidence) |
 | [iPhone probe](learning/iphone-probe.md) | Phase 0 iOS results: `requestUrl`, hashing, IndexedDB, `SecretStorage`, restarts, background (evidence) |
 
 Decision records are in [decisions/](decisions/).

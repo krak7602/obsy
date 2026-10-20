@@ -1,0 +1,34 @@
+{
+  "name": "@obsy/storage-r2",
+  "version": "0.0.0",
+  "private": true,
+  "description": "obsy Storage over a Cloudflare Workers R2 binding",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "@obsy/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@obsy/storage-testkit": "workspace:*",
+    "@types/node": "catalog:",
+    "miniflare": "4.20260730.0",
+    "vite-plus": "catalog:"
+  }
+}

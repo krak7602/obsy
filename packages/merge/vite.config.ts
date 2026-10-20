@@ -6,6 +6,8 @@ export default defineConfig({
     format: ['esm'],
     platform: 'neutral',
     dts: true,
-    exports: true,
+    // Workspace packages import the TypeScript source; `publishConfig`
+    // points at `dist`.
+    exports: { devExports: true },
   },
 });

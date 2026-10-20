@@ -8,14 +8,14 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted plan. The workspace is scaffolded ([toolchain](decisions/2026-10-20-toolchain.md)). Phase 0 is in progress: the [storage spike](learning/storage-spike.md) passed on local servers and on live R2, the [merge spike](learning/merge-spike.md) and the [merge diff replacement](learning/merge-diff.md) ran on generated inputs and on generated edits to real notes, and the [iPhone probe](learning/iphone-probe.md) passed. A corpus of real concurrent edits is deferred to phase 2.
+Status: accepted plan. Phase 0 is done, except a corpus of real concurrent edits (deferred to phase 2). Phase 1 is done, except a live run of the R2 Workers adapter: the protocol, the sync engine, and the simulator exist, and the engine held every invariant over one million seeds ([simulator results](learning/simulator-phase1.md)). Phase 0 results: the [storage spike](learning/storage-spike.md) passed on local servers and on live R2, the [merge spike](learning/merge-spike.md) and the [merge diff replacement](learning/merge-diff.md) ran on generated inputs and on generated edits to real notes, and the [iPhone probe](learning/iphone-probe.md) passed. A corpus of real concurrent edits is deferred to phase 2.
 
 ### Build phases
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
 | 0. Spikes | `@obsy/merge` against a corpus of real edits ([merge spike](learning/merge-spike.md), [merge diff](learning/merge-diff.md): synthetic inputs and generated edits on real notes done; real concurrent edits deferred to phase 2); conditional-create race test on R2 ([storage spike](learning/storage-spike.md): done, passes); `requestUrl`, hashing, and IndexedDB measured on an iPhone ([iPhone probe](learning/iphone-probe.md): done, passes) | Results recorded; open decisions settled |
-| 1. Protocol and core | `@obsy/protocol`, `@obsy/core`, `@obsy/storage-s3`, `@obsy/storage-r2`, the simulator, and the conformance suite | Simulator invariants hold over at least 1M seeds; R2 passes conformance |
+| 1. Protocol and core | `@obsy/protocol`, `@obsy/core`, `@obsy/storage-s3`, `@obsy/storage-r2`, the simulator, and the conformance suite (done: 1M seeds pass, [results](learning/simulator-phase1.md); R2 passes conformance through the S3 API; the Workers binding adapter passes on Miniflare, live run pending) | Simulator invariants hold over at least 1M seeds; R2 passes conformance |
 | 2. Desktop plugin | Scanner, three trees, journal, join, editor-safe apply, rails; first run pull-only against a copy of a vault | The copy converges and `verify` shows no differences; forced conflicts produce correct copies |
 | 3. iOS | Lifecycle, chunked attachments, `SecretStorage`, pairing, BRAT release | Offline phone edits, app kills mid-upload, NFD and case cases: no loss, no duplicates |
 | 4. Agent SDK and CLI | Operations, fences, presence deferral, proposals, provenance, undo; an existing agent moves its daily-note writes onto the SDK | Concurrent human and agent edits on the daily note merge with no silent loss |
@@ -60,6 +60,7 @@ Facts that the research could not verify: Cloudflare's per-object storage figure
 
 ## History
 
+- 2026-10-20: Phase 1 core built; one million simulator seeds pass.
 - 2026-10-20: Merge speed settled (Myers diff); generated corpus on real notes run.
 - 2026-10-20: iPhone probe passed; the iOS platform and Rolldown questions are settled.
 - 2026-10-20: Live R2 race runs passed; the R2 atomicity question is settled.

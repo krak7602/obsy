@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted principle. The storage conformance suite and race harness exist ([storage spike](../learning/storage-spike.md)). Merge unit, property, and oracle tests exist ([merge spike](../learning/merge-spike.md)). The simulator does not exist yet.
+Status: accepted principle. The storage conformance suite and race harness exist ([storage spike](../learning/storage-spike.md)). Merge unit, property, and oracle tests exist ([merge spike](../learning/merge-spike.md)). The deterministic simulator exists and checks every invariant below ([runbook](../runbooks/simulator.md), [results](../learning/simulator-phase1.md)).
 
 ### Principle
 
@@ -26,8 +26,8 @@ Related rules that follow from these invariants live with their subjects: "edit 
 
 ### Test strategy
 
-- **Conformance suite** for storage adapters: conditional-create races, a commit-log race, `If-Match`, list ordering, read-after-write. Existing behavior; run locally, not yet on R2 or AWS S3. Run it against every provider before the provider is listed as supported. See [Storage adapters](../subsystems/storage.md#conformance-suite) and the [runbook](../runbooks/storage-conformance.md).
-- **Deterministic simulation** of the core: a Mac, an iPhone, and an agent with offline periods, crashes between blob upload and log commit, duplicate requests, racy mtimes, renames and deletes. Everything is driven from a seed and is replayable. Phase 1 is done when the invariants hold over at least 1M seeds.
+- **Conformance suite** for storage adapters: conditional-create races, a commit-log race, `If-Match`, list ordering, read-after-write. Existing behavior; passes locally and on live R2, not yet run on AWS S3. Run it against every provider before the provider is listed as supported. See [Storage adapters](../subsystems/storage.md#conformance-suite) and the [runbook](../runbooks/storage-conformance.md).
+- **Deterministic simulation** of the core: a Mac, an iPhone, and an agent with offline periods, crashes at any request, lost responses, writes that land late, renames, deletes, and case and normalisation twins. Everything is driven from a seed and is replayable. Existing behavior; each invariant has a concrete check in the [simulator runbook](../runbooks/simulator.md#invariants-checked). Phase 1 is done when the invariants hold over at least 1M seeds.
 - **Merge properties** with `git merge-file` as an oracle, plus a private corpus of real vault edits. Keep the corpus out of this repository; run it with the [merge corpus runbook](../runbooks/merge-corpus.md).
 
 The prior art for this strategy (Dropbox CanopyCheck and Trinity, TigerBeetle VOPR) is in the [protocol research notes](../learning/research-notes/protocol-design.md#10-testing-strategies-for-sync-correctness).
@@ -35,4 +35,5 @@ The prior art for this strategy (Dropbox CanopyCheck and Trinity, TigerBeetle VO
 ## History
 
 - 2026-10-19: Invariants and test strategy accepted, from the former `DESIGN.md`.
+- 2026-10-20: Deterministic simulator implemented ([results](../learning/simulator-phase1.md)).
 - 2026-10-20: Storage conformance suite and race harness implemented ([storage spike](../learning/storage-spike.md)). First merge unit, property, and oracle tests added in the phase 0 merge spike ([merge spike](../learning/merge-spike.md)).

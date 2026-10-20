@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: accepted design, partly implemented. Existing behavior: `@obsy/protocol` (the storage contract only), `@obsy/storage-s3`, `@obsy/storage-testkit`, `@obsy/merge` (`merge3`), and an empty plugin shell; see the [development runbook](runbooks/development.md). Everything else on this page is accepted design.
+Status: accepted design, partly implemented. Existing behavior: `@obsy/protocol` (storage contract, records, commit rules), `@obsy/core` (sync engine and a minimal agent writer), `@obsy/storage-s3`, `@obsy/storage-testkit`, `@obsy/merge` (`merge3`), `@obsy/simulator`, and the platform probe in the plugin package; see the [development runbook](runbooks/development.md). Everything else on this page is accepted design.
 
 obsy syncs an Obsidian vault between devices through storage you own, and lets programs and AI agents edit the same notes safely. This page owns the system boundaries, the layers, and the trust model. Each layer has its own subsystem page.
 
@@ -63,6 +63,7 @@ flowchart TB
 | `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`), injectable `fetch` | Obsidian, Node, Workers | [Storage adapters](subsystems/storage.md) |
 | `@obsy/storage-r2` | Native R2 binding | Cloudflare Workers | [Storage adapters](subsystems/storage.md) |
 | `@obsy/storage-testkit` (test only) | In-memory `Storage`, conformance suite, race harness, fake S3 endpoint | Node (tests) | [Storage adapters](subsystems/storage.md#conformance-suite) |
+| `@obsy/simulator` (test only) | Deterministic simulation of devices, an agent, and a faulty bucket; invariant checks | Node (tests) | [Simulator runbook](runbooks/simulator.md) |
 | `@obsy/agent` | Safe edit operations and the `obsy` CLI | Node, Workers | [Agent SDK and CLI](subsystems/agent-sdk.md) |
 | `obsy` Obsidian plugin (`packages/obsidian-plugin`) | Vault scanning, editor-safe apply, iOS lifecycle, settings, pairing | Obsidian desktop and mobile | [Obsidian plugin](subsystems/obsidian-plugin.md) |
 | `@obsy/relay` (optional) | Cloudflare Worker + Durable Object: push notifications, device tokens, presence | Cloudflare | [Relay](subsystems/relay.md) |
@@ -90,5 +91,6 @@ The reasons are in [Server-trusted version 1](decisions/2026-10-19-server-truste
 
 ## History
 
+- 2026-10-20: Phase 1 packages added: records and commit rules in `@obsy/protocol`, `@obsy/core`, and `@obsy/simulator`.
 - 2026-10-20: Phase 0 packages added: the storage contract in `@obsy/protocol`, `@obsy/storage-s3`, `@obsy/storage-testkit`, and `merge3` in `@obsy/merge`.
 - 2026-10-19: Design accepted. Commits are ordered by conditional creates in the bucket; the Durable Object proposal from the research became the optional relay. Content moved from the former `DESIGN.md` into this page and the subsystem pages.
