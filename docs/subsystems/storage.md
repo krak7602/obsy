@@ -12,7 +12,7 @@ Status:
 
 - **Existing behavior** (phase 0 storage spike): the `Storage` interface, its errors, and the key rules in `@obsy/protocol`; the S3 adapter `@obsy/storage-s3`; and `@obsy/storage-testkit` with an in-memory `Storage`, the conformance suite, the race harness, and a fake S3 endpoint.
 - **Verified on R2 and locally.** The suite passes against the in-memory storage, the fake S3 endpoint, two local S3-compatible servers in Docker, and a live Cloudflare R2 bucket (three runs, up to 32 concurrent writers). It has not run against AWS S3. The results are in [Storage spike](../learning/storage-spike.md).
-- **Accepted design, not implemented:** `@obsy/storage-r2` (the Workers binding).
+- **Existing behavior, verified locally only:** `@obsy/storage-r2` (the Workers binding). It passes the conformance suite against Miniflare's local R2 simulation, not yet against real R2 from a Worker.
 
 ### Interface
 
@@ -71,7 +71,7 @@ S3 and R2 accept empty segments. The rule is stricter so that keys stay portable
 | Package | Transport | Runs in | Status |
 | --- | --- | --- | --- |
 | `@obsy/storage-s3` | S3 API with SigV4 signing (`aws4fetch`). `fetch` is injectable; the Obsidian plugin passes its `requestUrl` transport ([Obsidian plugin](obsidian-plugin.md#platform)). | Obsidian, Node, Workers | Existing behavior; passes on R2 from Node; not yet run against AWS S3 or inside Obsidian |
-| `@obsy/storage-r2` | Native R2 binding | Cloudflare Workers | Accepted design, not implemented |
+| `@obsy/storage-r2` | Native R2 binding | Cloudflare Workers | Existing behavior; passes on Miniflare, not yet on real R2 |
 
 ### `@obsy/storage-s3`
 
@@ -104,6 +104,15 @@ Status mapping:
 | other 4xx | `StorageError` (fatal) | — | |
 
 For a 409 on `If-Match`, AWS says to fetch the object's etag again before the retry.
+
+### `@obsy/storage-r2`
+
+Existing behavior. `new R2Storage(bucket, { prefix? })`, where `bucket` is a Workers `R2Bucket` binding (typed structurally as `R2BucketLike`, so the package needs no Workers types).
+
+- `putIfAbsent` calls `put` with `onlyIf: { etagDoesNotMatch: '*' }`; `putIfMatch` with `onlyIf: { etagMatches: etag }`. A failed condition makes `put` return `null`, which becomes `PreconditionFailed`.
+- `list` uses `prefix`, `startAfter`, `limit`, and the binding's cursor for short pages.
+- Any other binding error is a `TransientStorageError`; for writes it has `mayHaveApplied`.
+- Observed on Miniflare 4.20260730.0 (2026-10-20): `etagDoesNotMatch: '*'` creates only when the key is missing, and `etagMatches` on a missing key fails the condition. Real R2 is not verified: it needs a deployed Worker. The binding documentation does not describe either case ([Workers API reference](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)).
 
 ### Provider requirements
 

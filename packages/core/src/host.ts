@@ -53,6 +53,24 @@ export interface PendingClaim {
   readonly opId: string;
 }
 
+/**
+ * A local write that changes a file's base, recorded before the write. If
+ * the device stops between the write and the next save, the file's content
+ * tells whether the write happened: `result` means yes, `expected` means
+ * no. Anything else means the user edited the file since; the engine then
+ * keeps that version as a conflict copy instead of guessing its base.
+ */
+export interface ContentIntent {
+  /** Where the write goes. */
+  readonly path: string;
+  /** The content hash the write required (null: no file at the path). */
+  readonly expected: ContentHash | null;
+  /** The content hash after the write. */
+  readonly result: ContentHash;
+  /** The synced entry once the write has happened. */
+  readonly next: SyncedFile;
+}
+
 /** The device's durable sync state. */
 export interface DeviceState {
   readonly vaultId: string;
@@ -65,6 +83,8 @@ export interface DeviceState {
   /** Synced files by file ID. */
   readonly synced: Readonly<Record<string, SyncedFile>>;
   readonly pending: PendingClaim | null;
+  /** Local writes in progress, by file ID. Missing in state saved before intents existed. */
+  readonly intents?: Readonly<Record<string, ContentIntent>>;
 }
 
 /** Durable storage for `DeviceState`. `save` must be atomic. */

@@ -17,6 +17,7 @@ import {
 } from '@obsy/protocol';
 
 import type {
+  ContentIntent,
   DeviceState,
   Environment,
   LocalFile,
@@ -130,8 +131,11 @@ export class SyncEngine {
     }
 
     const synced = new Map(Object.entries(state.synced));
+    const intents = new Map(Object.entries(state.intents ?? {}));
     const counters = { commits: 0, localChanges: 0, conflictCopies: 0 };
-    const save = async (pending: PendingClaim | null): Promise<void> => {
+    let pendingClaim: PendingClaim | null = state.pending;
+    const save = async (pending: PendingClaim | null = pendingClaim): Promise<void> => {
+      pendingClaim = pending;
       const checkpoint = manifest.toCheckpoint();
       await this.#options.state.save({
         vaultId: vault.vaultId,
@@ -139,8 +143,14 @@ export class SyncEngine {
         head: { seq: checkpoint.seq, files: checkpoint.files },
         synced: Object.fromEntries(synced),
         pending,
+        intents: Object.fromEntries(intents),
       });
     };
+
+    if (intents.size > 0) {
+      counters.conflictCopies += await this.#resolveIntents(intents, synced);
+      await save();
+    }
 
     if (state.pending !== null) {
       await this.#resolvePending(state.pending, manifest, synced);
@@ -150,7 +160,14 @@ export class SyncEngine {
     const maxPasses = this.#options.maxPasses ?? 20;
     for (let pass = 0; pass < maxPasses; pass++) {
       await this.#remote.catchUp(manifest);
-      const reconciler = new Reconciler(this.#options, this.#remote, manifest, synced);
+      const reconciler = new Reconciler(
+        this.#options,
+        this.#remote,
+        manifest,
+        synced,
+        intents,
+        () => save(null),
+      );
       let ops: Op[];
       try {
         ops = await reconciler.run();
@@ -189,6 +206,39 @@ export class SyncEngine {
       }
     }
     return { ...counters, settled: false };
+  }
+
+  /**
+   * Settles local writes that were in progress when the device stopped.
+   * Returns the number of conflict copies made.
+   */
+  async #resolveIntents(
+    intents: Map<string, ContentIntent>,
+    synced: Map<string, SyncedFile>,
+  ): Promise<number> {
+    const local = this.#options.local;
+    let copies = 0;
+    for (const [fileId, intent] of intents) {
+      const bytes = await local.read(intent.path);
+      const hash = bytes === null ? null : await hashContent(bytes);
+      if (hash === intent.result) {
+        synced.set(fileId, intent.next);
+      } else if (hash !== intent.expected && hash !== null) {
+        // Edited after a write that may or may not have happened: the base
+        // is unknown. Keep this version as a conflict copy; the file's head
+        // version is restored by the next pass.
+        const taken = new Set((await local.list()).map((f) => pathKey(f.path)));
+        const copy = freeConflictCopyPath(
+          intent.path,
+          this.#options.deviceName,
+          this.#options.env.now(),
+          (key) => taken.has(key),
+        );
+        if (await local.move(intent.path, copy, hash)) copies++;
+      }
+    }
+    intents.clear();
+    return copies;
   }
 
   /** Re-sends a claim whose outcome is unknown, with the identical body at the same seq. */
@@ -269,18 +319,22 @@ class Reconciler {
   /** Untracked local files by path key. */
   readonly #untracked = new Map<string, Untracked>();
   readonly #blobs = new Map<ContentHash, Uint8Array>();
-  /**
-   * Files whose content now matches the head, waiting for their path. They
-   * become synced only when the path matches too, so that an interrupted
-   * pass cannot mistake a pending remote rename for a local one.
-   */
-  readonly #ready = new Map<string, FileEntry>();
 
+  /**
+   * A synced entry's `rev` and `hash` are the content base of the local
+   * file; its `path` is the path base. They advance separately, each right
+   * after the local change that brings it to the head, so that an
+   * interrupted pass leaves a correct base: a pending remote rename is not
+   * mistaken for a local one, and merged content is never merged again
+   * against an older base.
+   */
   constructor(
     readonly options: SyncEngineOptions,
     readonly remote: RemoteVault,
     readonly head: Manifest,
     readonly synced: Map<string, SyncedFile>,
+    readonly intents: Map<string, ContentIntent>,
+    readonly persist: () => Promise<void>,
   ) {}
 
   async run(): Promise<Op[]> {
@@ -351,6 +405,32 @@ class Reconciler {
     if (old !== undefined && old.path !== path) this.#local.delete(pathKey(old.path));
     this.#local.set(pathKey(path), { path, hash, size: bytes.length });
     this.localChanges++;
+  }
+
+  /**
+   * A local write that moves a synced file's content base to `next`. The
+   * intent is saved first, so that a stop between the write and the next
+   * save can be settled from the file's content (see `ContentIntent`).
+   */
+  async #writeBase(
+    fileId: string,
+    path: string,
+    bytes: Uint8Array,
+    expected: ContentHash | null,
+    next: SyncedFile,
+  ): Promise<void> {
+    this.intents.set(fileId, { path, expected, result: await hashContent(bytes), next });
+    await this.persist();
+    try {
+      await this.#write(path, bytes, expected);
+    } catch (error) {
+      this.intents.delete(fileId);
+      await this.persist();
+      throw error;
+    }
+    this.synced.set(fileId, next);
+    this.intents.delete(fileId);
+    await this.persist();
   }
 
   async #remove(path: string, expected: ContentHash): Promise<void> {
@@ -446,14 +526,17 @@ class Reconciler {
         }
         // Edited or moved remotely: edit beats delete. Restore the head version.
         if (this.#local.has(pathKey(h.path))) await this.#makeRoom(h.path);
-        await this.#write(h.path, await this.#blob(h.hash), null);
+        await this.#writeBase(fileId, h.path, await this.#blob(h.hash), null, {
+          path: h.path,
+          rev: h.rev,
+          hash: h.hash,
+        });
         this.#paths.set(fileId, h.path);
-        this.synced.set(fileId, { path: h.path, rev: h.rev, hash: h.hash });
         continue;
       }
 
       const localChanged = local.hash !== s.hash || local.path !== s.path;
-      if (h.rev === s.rev) continue; // no remote change; local changes become ops
+      if (h.rev === s.rev) continue; // content base is the head; paths in #applyRemoteMoves
       if (h.deleted) {
         if (!localChanged) {
           await this.#remove(local.path, s.hash);
@@ -468,9 +551,12 @@ class Reconciler {
         continue;
       }
 
-      // Both sides live. Content now, path in #applyRemoteMoves.
+      // Both sides live. Content now (the content base becomes the head),
+      // path in #applyRemoteMoves.
       await this.#mergeContent(fileId, s, h, local);
-      this.#ready.set(fileId, h);
+      if (this.synced.get(fileId)?.rev !== h.rev) {
+        this.synced.set(fileId, { path: s.path, rev: h.rev, hash: h.hash });
+      }
     }
   }
 
@@ -483,9 +569,10 @@ class Reconciler {
     const base = s.hash;
     const ours = local.hash;
     const theirs = h.hash;
+    const next: SyncedFile = { path: s.path, rev: h.rev, hash: h.hash };
     if (theirs === base || ours === theirs) return;
     if (ours === base) {
-      await this.#write(local.path, await this.#blob(theirs), ours);
+      await this.#writeBase(fileId, local.path, await this.#blob(theirs), ours, next);
       return;
     }
     const oursBytes = await this.options.local.read(local.path);
@@ -507,7 +594,7 @@ class Reconciler {
       ) {
         const result = merge3({ base: b, ours: o, theirs: t });
         if (result.status === 'clean') {
-          await this.#write(local.path, encodeUtf8(result.text), ours);
+          await this.#writeBase(fileId, local.path, encodeUtf8(result.text), ours, next);
           return;
         }
       }
@@ -517,7 +604,7 @@ class Reconciler {
     await this.#write(copy, oursBytes, null);
     this.#untracked.set(pathKey(copy), { path: copy, conflictOf: { fileId, rev: h.rev } });
     this.conflictCopies++;
-    await this.#write(local.path, await this.#blob(theirs), ours);
+    await this.#writeBase(fileId, local.path, await this.#blob(theirs), ours, next);
   }
 
   // ------------------------------------------------------------ remote moves
@@ -529,10 +616,16 @@ class Reconciler {
    */
   async #applyRemoteMoves(): Promise<void> {
     const wanted = new Map<string, string>();
-    for (const [fileId, h] of this.#ready) {
-      const s = this.synced.get(fileId) as SyncedFile;
-      const path = this.#paths.get(fileId) as string;
-      if (h.path !== s.path && path !== h.path) wanted.set(fileId, h.path);
+    for (const [fileId, s] of this.synced) {
+      const h = this.head.file(fileId);
+      const path = this.#paths.get(fileId);
+      if (h === undefined || h.deleted || path === undefined || h.path === s.path) continue;
+      if (path === h.path) {
+        // Moved already, by an earlier pass that stopped before recording it.
+        this.synced.set(fileId, { ...s, path: h.path });
+      } else {
+        wanted.set(fileId, h.path);
+      }
     }
     let progress = true;
     while (wanted.size > 0) {
@@ -566,13 +659,12 @@ class Reconciler {
         }
         await this.#move(from, target, (this.#file(from) as LocalFile).hash);
         this.#paths.set(fileId, target);
+        const s = this.synced.get(fileId) as SyncedFile;
+        this.synced.set(fileId, { ...s, path: target });
         wanted.delete(fileId);
         progress = true;
       }
     }
-    for (const [fileId, h] of this.#ready)
-      this.synced.set(fileId, { path: h.path, rev: h.rev, hash: h.hash });
-    this.#ready.clear();
   }
 
   // ------------------------------------------------------------ remote creates
@@ -653,11 +745,16 @@ class Reconciler {
       const local = path === undefined ? undefined : this.#file(path);
       if (local === undefined) {
         ops.push({ type: 'delete', fileId, path: h.path, baseRev: h.rev });
-      } else if (local.hash !== h.hash) {
-        if (local.path !== h.path) {
+      } else {
+        // The device renamed the file only if the head kept the path base.
+        // Otherwise a remote rename is still to be applied on the device.
+        const renamed = local.path !== h.path && h.path === s.path;
+        if (renamed) {
           // One op per file per commit: move now, put the content next commit.
           ops.push({ type: 'move', fileId, from: h.path, to: local.path, baseRev: h.rev });
-        } else {
+        } else if (local.hash !== h.hash && local.path === h.path) {
+          // (A file still waiting for a remote rename commits its content
+          // after the rename: the upload reads the file at its head path.)
           ops.push({
             type: 'put',
             fileId,
@@ -667,8 +764,6 @@ class Reconciler {
             size: local.size,
           });
         }
-      } else if (local.path !== h.path) {
-        ops.push({ type: 'move', fileId, from: h.path, to: local.path, baseRev: h.rev });
       }
     }
     // Paths that this commit frees: a new file or a move may take them.

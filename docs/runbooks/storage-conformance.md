@@ -16,12 +16,14 @@ Run the commands from the repository root.
 
 | Command | Target | Needs | In `pnpm test` |
 | --- | --- | --- | --- |
-| `pnpm test` | `MemoryStorage`, and `S3Storage` through the fake S3 endpoint | Nothing | Yes |
+| `pnpm test` | `MemoryStorage`, `S3Storage` through the fake S3 endpoint, and `R2Storage` against Miniflare's local R2 (`packages/storage-r2/test/`) | Nothing (Miniflare runs `workerd` locally) | Yes |
 | Obsy probe, **Storage over requestUrl** | `S3Storage` over `requestUrl`, inside Obsidian, against a scratch bucket | Obsidian, a scratch vault, and a scratch bucket ([platform probe](platform-probe.md)) | No |
 | `pnpm run test:s3-local` | `S3Storage` against a local S3-compatible server in Docker | Docker, `curl`, `openssl` | No |
 | `pnpm run test:s3-live` | `S3Storage` against a real R2 or AWS S3 bucket | A scratch bucket and a token scoped to it | No |
 
-The local servers are **harness targets, not supported providers**. They exercise the adapter against real HTTP, real SigV4 verification, and real concurrency. They do not show that R2 or AWS S3 behave the same way.
+A live run of `R2Storage` needs a Worker with an R2 binding, deployed to Cloudflare; it is not set up yet.
+
+The local servers and Miniflare are **harness targets, not supported providers**. They exercise the adapter against real HTTP, real SigV4 verification, and real concurrency. They do not show that R2 or AWS S3 behave the same way.
 
 ### Race parameters
 

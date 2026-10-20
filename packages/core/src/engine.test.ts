@@ -3,6 +3,7 @@ import { MemoryStorage } from '@obsy/storage-testkit';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { SyncEngine } from './engine';
+import type { DeviceState, StateStore } from './host';
 import { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
 import { initVault } from './vault';
 
@@ -203,5 +204,59 @@ describe('SyncEngine', () => {
     await phone.files.userWrite('img.png', new Uint8Array([1, 2, 5]));
     await syncAll(devices);
     expect(paths(mac.files)).toEqual(['img (conflict phone 202610200900).png', 'img.png']);
+  });
+
+  it('settles a local write that stopped before it was recorded', async () => {
+    const storage = new MemoryStorage();
+    const env = new SeededEnvironment(7);
+    await initVault(storage, env);
+    const store = new MemoryStateStore();
+    // While armed, throws on the first save after the Mac's file changed: a
+    // crash between the local write and its record.
+    let armed = false;
+    const crashing: StateStore = {
+      load: () => store.load(),
+      save: async (state: DeviceState) => {
+        if (armed && text(macFiles, 'a.md') === 'one\ntwo\n') throw new Error('crash');
+        await store.save(state);
+      },
+    };
+    const macFiles = new MemoryLocalFiles();
+    const engine = (state: StateStore): SyncEngine =>
+      new SyncEngine({ storage, local: macFiles, state, env, actorId: 'mac', deviceName: 'mac' });
+    const phoneFiles = new MemoryLocalFiles();
+    const phoneEngine = new SyncEngine({
+      storage,
+      local: phoneFiles,
+      state: new MemoryStateStore(),
+      env,
+      actorId: 'phone',
+      deviceName: 'phone',
+    });
+
+    await write(macFiles, 'a.md', 'one\n');
+    await engine(crashing).sync();
+    await phoneEngine.sync();
+    await write(phoneFiles, 'a.md', 'one\ntwo\n');
+    await phoneEngine.sync();
+
+    armed = true;
+    await expect(engine(crashing).sync()).rejects.toThrow('crash');
+    armed = false;
+    expect(text(macFiles, 'a.md')).toBe('one\ntwo\n');
+
+    // The phone goes back to the first content; the Mac user edits the file.
+    await write(phoneFiles, 'a.md', 'one\n');
+    await phoneEngine.sync();
+    await write(macFiles, 'a.md', 'one\ntwo\nmac\n');
+
+    await engine(store).sync();
+    await engine(store).sync();
+    await phoneEngine.sync();
+    // The Mac version is kept as a conflict copy; the head stays at the path.
+    expect(paths(macFiles)).toEqual(['a (conflict mac 202610200900).md', 'a.md']);
+    expect(text(macFiles, 'a.md')).toBe('one\n');
+    expect(text(macFiles, 'a (conflict mac 202610200900).md')).toBe('one\ntwo\nmac\n');
+    expect(paths(phoneFiles)).toEqual(paths(macFiles));
   });
 });

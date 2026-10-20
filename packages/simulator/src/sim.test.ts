@@ -25,7 +25,7 @@ async function run(faults?: typeof NO_FAULTS): Promise<string[]> {
 }
 
 /** Seeds that found engine bugs in the million-seed run; they must keep passing. */
-const REGRESSIONS = [13_431, 14_816, 95_652, 318_587];
+const REGRESSIONS = [13_431, 14_816, 95_652, 318_587, 510_718];
 
 describe('simulator', () => {
   it('keeps passing the seeds that found bugs', { timeout: 600_000 }, async () => {
