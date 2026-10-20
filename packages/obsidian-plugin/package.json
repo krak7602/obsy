@@ -8,9 +8,11 @@
   "scripts": {
     "build": "rolldown -c rolldown.config.ts",
     "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline",
+    "test:desktop": "bash scripts/desktop-e2e.sh",
     "lint:obsidian": "cd ../.. && eslint --max-warnings 0 --config packages/obsidian-plugin/eslint.config.mjs packages/obsidian-plugin/src manifest.json packages/obsidian-plugin/probe/manifest.json"
   },
   "dependencies": {
+    "@obsy/core": "workspace:*",
     "@obsy/protocol": "workspace:*",
     "@obsy/storage-s3": "workspace:*",
     "@obsy/storage-testkit": "workspace:*"
@@ -20,8 +22,10 @@
     "@codemirror/view": "catalog:",
     "@eslint/js": "catalog:obsidian-lint",
     "@eslint/json": "catalog:obsidian-lint",
+    "@types/node": "catalog:",
     "eslint": "catalog:obsidian-lint",
     "eslint-plugin-obsidianmd": "catalog:obsidian-lint",
+    "fake-indexeddb": "catalog:",
     "globals": "catalog:obsidian-lint",
     "obsidian": "catalog:",
     "rolldown": "catalog:",

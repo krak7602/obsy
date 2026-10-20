@@ -8,7 +8,7 @@ interface WebGlobals {
   TextEncoder: new () => { encode(text: string): Uint8Array };
   TextDecoder: new (
     label: string,
-    options?: { fatal?: boolean },
+    options?: { fatal?: boolean; ignoreBOM?: boolean },
   ) => { decode(bytes: Uint8Array): string };
   crypto: {
     subtle: { digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer> };
@@ -19,13 +19,15 @@ interface WebGlobals {
 export const web = globalThis as unknown as WebGlobals;
 
 const encoder = new web.TextEncoder();
-const strictDecoder = new web.TextDecoder('utf-8', { fatal: true });
+// `ignoreBOM` keeps a leading U+FEFF in the text, so that decoding and
+// encoding again gives the same bytes.
+const strictDecoder = new web.TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function encodeUtf8(text: string): Uint8Array {
   return encoder.encode(text);
 }
 
-/** Decodes UTF-8 and throws on malformed input. */
+/** Decodes UTF-8 and throws on malformed input. A byte order mark stays in the text as U+FEFF. */
 export function decodeUtf8Strict(bytes: Uint8Array): string {
   return strictDecoder.decode(bytes);
 }

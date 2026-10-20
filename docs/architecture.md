@@ -1,14 +1,14 @@
 ---
 title: Architecture
 aliases: [design, DESIGN.md, system overview, layers, packages]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Architecture
 
 ## Current
 
-Status: accepted design, partly implemented. Existing behavior: `@obsy/protocol` (storage contract, records, commit rules), `@obsy/core` (sync engine and a minimal agent writer), `@obsy/storage-s3`, `@obsy/storage-testkit`, `@obsy/merge` (`merge3`), `@obsy/simulator`, and the platform probe in the plugin package; see the [development runbook](runbooks/development.md). Everything else on this page is accepted design.
+Status: accepted design, partly implemented. Existing behavior: `@obsy/protocol` (storage contract, records, commit rules), `@obsy/core` (sync engine and a minimal agent writer), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/merge` (`merge3`), `@obsy/simulator`, the Obsidian plugin's desktop sync, and the platform probe in the plugin package; see the [development runbook](runbooks/development.md). Everything else on this page is accepted design.
 
 obsy syncs an Obsidian vault between devices through storage you own, and lets programs and AI agents edit the same notes safely. This page owns the system boundaries, the layers, and the trust model. Each layer has its own subsystem page.
 
@@ -91,6 +91,7 @@ The reasons are in [Server-trusted version 1](decisions/2026-10-19-server-truste
 
 ## History
 
+- 2026-10-21: Desktop sync in the Obsidian plugin (phase 2).
 - 2026-10-20: Phase 1 packages added: records and commit rules in `@obsy/protocol`, `@obsy/core`, and `@obsy/simulator`.
 - 2026-10-20: Phase 0 packages added: the storage contract in `@obsy/protocol`, `@obsy/storage-s3`, `@obsy/storage-testkit`, and `merge3` in `@obsy/merge`.
 - 2026-10-19: Design accepted. Commits are ordered by conditional creates in the bucket; the Durable Object proposal from the research became the optional relay. Content moved from the former `DESIGN.md` into this page and the subsystem pages.

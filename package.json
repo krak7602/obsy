@@ -10,6 +10,7 @@
     "test:s3-local": "pnpm --filter @obsy/storage-s3 run test:local",
     "test:s3-live": "pnpm --filter @obsy/storage-s3 run test:live",
     "test:r2-live": "pnpm --filter @obsy/storage-r2 run test:live",
+    "test:desktop": "pnpm --filter @obsy/obsidian-plugin run test:desktop",
     "build": "vp run --filter './packages/*' build"
   },
   "devDependencies": {

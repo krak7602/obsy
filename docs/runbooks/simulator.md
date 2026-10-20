@@ -1,14 +1,14 @@
 ---
 title: Simulator
 aliases: [deterministic simulation, sim, seeds, 1M seeds, invariants check, simulate, cli.mjs]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Simulator
 
 ## Current
 
-This page owns how to run the deterministic simulator of the sync engine and how to replay a failing seed. The invariants it checks are on [Correctness and testing](../concepts/correctness-and-testing.md). Results are on [Simulator, phase 1](../learning/simulator-phase1.md).
+This page owns how to run the deterministic simulator of the sync engine and how to replay a failing seed. The invariants it checks are on [Correctness and testing](../concepts/correctness-and-testing.md). Results are on [Simulator, phase 1](../learning/simulator-phase1.md) and [Desktop plugin, phase 2](../learning/desktop-plugin-phase2.md#simulator).
 
 Status: existing behavior. Package `@obsy/simulator` (test only, Node).
 
@@ -18,7 +18,7 @@ A seed drives everything: the order of every bucket request and local file call,
 
 - **Actors:** two devices (`mac`, `phone`) with their own files and saved state, and an agent that appends lines to the daily note. All share one in-memory bucket.
 - **Users** create, edit, rename, and remove files from a small set of paths that includes case twins (`a.md`, `A.md`), normalisation twins (`café.md` in NFC and NFD), folders, and a non-text file type (`img.png`). Every line a user types is a unique token.
-- **Steps** (600 by default): run one waiting request or file call, a user action, start a sync, start an agent write, crash a device mid-sync, take a device offline or online, land a delayed write, or advance the clock.
+- **Steps** (600 by default): run one waiting request or file call, a user action, start a sync, start an agent write, crash a device mid-sync, take a device offline or online, land a delayed write, or advance the clock. One sync in five is pull-only, as on a device that joins a vault. The safety rails are on with limits too high to trip, so that their check runs on every pass.
 - **Faults** (default): 3% of requests fail before they reach the bucket; 3% of writes apply and lose their response; 2% of writes fail now and land later. A device that crashes with a write in flight lands it half of the time.
 - **Quiet phase:** faults off, delayed writes land, devices online, then syncs until nothing changes. Then the invariants are checked.
 
@@ -52,4 +52,5 @@ After a change to the simulator, plant a bug and confirm that seeds fail. Exampl
 
 ## History
 
+- 2026-10-21: Pull-only syncs and the rail check added.
 - 2026-10-20: Created with the phase 1 simulator.

@@ -1,7 +1,7 @@
 ---
 title: Development
 aliases: [setup, local development, commands, build, test, check, repository layout]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Development
@@ -28,6 +28,8 @@ Run these from the repository root.
 | `pnpm test` | Run all tests once (`vp test`). Hermetic: no Docker, no network. |
 | `pnpm run test:s3-local` | Storage conformance against a local S3 server in Docker ([storage conformance](storage-conformance.md)) |
 | `pnpm run test:s3-live` | Storage conformance against a scratch R2 or S3 bucket ([storage conformance](storage-conformance.md)) |
+| `pnpm run test:r2-live` | Storage conformance of the R2 binding adapter through a temporary test Worker ([storage conformance](storage-conformance.md#live-r2-binding-run)) |
+| `pnpm run test:desktop` | The plugin in a real Obsidian desktop app against a local S3 server in Docker ([desktop plugin test](desktop-plugin-test.md)) |
 | `pnpm run build` | Build every package (`vp run` over `packages/*`) |
 
 Run `check`, `test`, and `build` before you report a change as done.
@@ -39,7 +41,7 @@ For one package, run its script with a filter, for example `pnpm --filter @obsy/
 | Path | Contents |
 | --- | --- |
 | `packages/<name>/` | One workspace package. npm name `@obsy/<name>`. |
-| `packages/obsidian-plugin/` | Plugin source. Builds `dist/main.js`, and the [platform probe](platform-probe.md) in `dist/obsy-probe/`. |
+| `packages/obsidian-plugin/` | Plugin source. Builds `dist/main.js`, and the [platform probe](platform-probe.md) in `dist/obsy-probe/`. `e2e/` holds the [desktop plugin test](desktop-plugin-test.md). |
 | `manifest.json`, `versions.json` | The plugin manifest and version map. They must stay at the repository root: the Obsidian community directory reads `manifest.json` from the root of the default branch. |
 | `vite.config.ts` | Root lint, format, and test settings for every package |
 | `packages/obsidian-plugin/eslint.config.mjs` | Obsidian review rules. ESLint runs from the repository root, because the rules read `manifest.json` from the working directory. |
@@ -66,3 +68,4 @@ Update `vite-plus` in the catalog. Then set the `vite` override to the same vers
 
 - 2026-10-20: Workspace scaffolded with pnpm and Vite+ ([decision](../decisions/2026-10-20-toolchain.md)).
 - 2026-10-20: Added the storage conformance commands, source exports for workspace libraries, and the `test/` pattern for integration tests.
+- 2026-10-21: Added the R2 binding and desktop plugin test commands.

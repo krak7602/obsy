@@ -176,6 +176,9 @@ catalogs:
     aws4fetch:
       specifier: 1.0.20
       version: 1.0.20
+    fake-indexeddb:
+      specifier: 6.2.5
+      version: 6.2.5
     fast-check:
       specifier: 4.10.2
       version: 4.10.2
@@ -266,6 +269,9 @@ importers:
 
   packages/obsidian-plugin:
     dependencies:
+      '@obsy/core':
+        specifier: workspace:*
+        version: link:../core
       '@obsy/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -288,12 +294,18 @@ importers:
       '@eslint/json':
         specifier: catalog:obsidian-lint
         version: 0.14.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
       eslint:
         specifier: catalog:obsidian-lint
         version: 9.39.5(supports-color@7.2.0)
       eslint-plugin-obsidianmd:
         specifier: catalog:obsidian-lint
         version: 0.4.2(@eslint/js@9.39.5)(@eslint/json@0.14.0)(@typescript-eslint/parser@8.72.0(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))(eslint@9.39.5(supports-color@7.2.0))(obsidian@1.14.4(@codemirror/state@6.7.6)(@codemirror/view@6.43.13))(supports-color@7.2.0)(typescript-eslint@8.72.0(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))
+      fake-indexeddb:
+        specifier: 'catalog:'
+        version: 6.2.5
       globals:
         specifier: catalog:obsidian-lint
         version: 17.13.0
@@ -2004,6 +2016,10 @@ packages:
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fast-check@4.10.2:
     resolution: {integrity: sha512-iK2f+YrcmoeGqk6fA0ea2bptcu/itMIm4NfEozq6N25+aG6h7s5HZbB/k1aV7b5w5sFLMCbbtRUsTVR+BgC3xw==}
@@ -4674,6 +4690,8 @@ snapshots:
   esutils@2.0.3: {}
 
   expect-type@1.4.0: {}
+
+  fake-indexeddb@6.2.5: {}
 
   fast-check@4.10.2:
     dependencies:

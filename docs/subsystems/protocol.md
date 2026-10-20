@@ -1,7 +1,7 @@
 ---
 title: Protocol and core sync engine
 aliases: [bucket protocol, object layout, commit log, commit algorithm, commit rules, change feed, checkpoints, compaction, gc, records, protocol, core, sync engine, reconcile, Manifest, SyncEngine, AgentWriter]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Protocol and core sync engine
@@ -10,8 +10,8 @@ updated: 2026-10-20
 
 Status:
 
-- **Existing behavior** (phase 1): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`), bucket access (`RemoteVault`), checkpoints, and a minimal agent writer (`AgentWriter.appendLine`) in `@obsy/core`. The [simulator](../runbooks/simulator.md) checks them.
-- **Accepted design, not implemented:** proposals, presence, device records, GC, `verify`, `export`, restore, and the epoch bump tool.
+- **Existing behavior** (phases 1 and 2): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`) with pull-only runs and safety rails, bucket access (`RemoteVault`), checkpoints, `verifyLocal`, and a minimal agent writer (`AgentWriter.appendLine`) in `@obsy/core`. The [simulator](../runbooks/simulator.md) checks them.
+- **Accepted design, not implemented:** proposals, presence, device records, GC, the `obsy verify` and `obsy export` commands, restore, and the epoch bump tool.
 
 The bucket orders every change by itself. Every writer tries to create the next numbered log entry with a conditional create. Exactly one succeeds; the others re-read, rebase, and retry. The provider requirements for this are on [Storage adapters](storage.md). The reasons are in [The bucket is the sequencer](../decisions/2026-10-19-bucket-as-sequencer.md).
 
@@ -118,6 +118,9 @@ Existing behavior. `SyncEngine.sync()` (`packages/core/src/engine.ts`) runs on o
 - **Claims have a definite outcome.** The engine saves the commit body as a pending claim, then creates `log/<seq>`. A request that may have applied is retried with the identical body at the same `seq`; a precondition failure is resolved by reading the entry and comparing `opId`. A lost claim starts the next pass. After a crash, the pending claim is re-sent the same way. Reconcile also recognises the device's own landed commit by content, so a lost pending claim cannot duplicate work.
 - **Retries** of transient storage errors use capped exponential backoff with full jitter (100 ms base, 10 s cap) and honour `Retry-After`.
 - **Checkpoints** are written after a commit whose `seq` is a multiple of 500. A device with no state, another vault ID, or another epoch starts from the newest checkpoint and reconciles every file by content.
+- **Text** is decoded as strict UTF-8 for merges. A leading byte order mark stays in the text, so a merged note keeps it.
+- **Pull-only runs.** `sync({ pullOnly: true })` does everything up to the commit: it catches up and reconciles, so remote changes reach the device and are merged into local edits, but it sends nothing. `SyncReport.unsent` counts the ops it held back. A device joining an existing vault starts this way ([plugin](obsidian-plugin.md#connect-and-join)). A pending claim from an earlier run is still re-sent, so its outcome becomes definite.
+- **Safety rails** (`SyncEngineOptions.rails`, off unless set). Before a pass changes anything, the engine counts the files it would delete on the device (remote deletes of unchanged local files) and in the bucket (synced files missing locally). It throws `SafetyRailError` when either count is more than `maxFiles` (default 50), or at least `minFiles` (default 10) and more than `maxFraction` (default 0.2) of the files. With `emptyVault` (default on), a run that would send changes also stops when the device has no files at all but synced files that the head still has. `sync({ allowMassDelete: true })` skips the rails for one run, after the user confirms.
 
 `AgentWriter.appendLine(path, line)` is the phase 1 agent operation: read the head, append a line, commit with `baseRev` equal to the head revision, and on a lost claim read the new head and compute again. An agent never merges.
 
@@ -134,12 +137,13 @@ Any client may write `checkpoints/<seq>.json.gz` after applying `seq`; creation 
 ### Integrity and recovery
 
 - Every blob is verified against its SHA-256 when written and read.
-- `obsy verify` compares every local file with the head manifest and reports differences.
+- `verifyLocal(storage, env, local)` (existing behavior) reads the head from the newest checkpoint and the log, and compares every local file with it: missing files, extra files, content differences, and paths that differ only in case or Unicode form. It changes nothing. The plugin's **Verify** uses it; the `obsy verify` command will too.
 - History is the log plus immutable blobs. Restoring a file or the whole vault to an earlier `seq` writes new commits; nothing is rewritten.
 - `vault.json` `epoch` is bumped after any out-of-band repair, forcing every device to reconcile by hash.
 - `obsy export` writes a plain folder copy of any `seq` to another location, so recovery never depends on obsy itself.
 
 ## History
 
+- 2026-10-21: Pull-only runs, safety rails, and `verifyLocal` added for the desktop plugin; text decoding keeps a byte order mark.
 - 2026-10-20: Records, commit rules, and the sync engine implemented in phase 1. Checkpoints are uncompressed JSON in format 1. Every op's `baseRev` must equal the current revision; path keys are checked per commit.
 - 2026-10-19: Bucket-sequenced protocol accepted, replacing the Durable Object version authority proposed in the [research](../learning/sync-design-research.md). Content moved from the former `DESIGN.md`.

@@ -2,17 +2,21 @@ import { decodeUtf8Strict, encodeUtf8, type Storage } from '@obsy/protocol';
 import { MemoryStorage } from '@obsy/storage-testkit';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { SyncEngine } from './engine';
+import { SafetyRailError, SyncEngine, type SafetyRails } from './engine';
 import type { DeviceState, StateStore } from './host';
 import { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
 import { initVault } from './vault';
+import { verifyLocal } from './verify';
 
 interface Device {
   files: MemoryLocalFiles;
   engine: SyncEngine;
 }
 
-async function setup(names: string[]): Promise<{ storage: Storage; devices: Device[] }> {
+async function setup(
+  names: string[],
+  rails?: SafetyRails,
+): Promise<{ storage: Storage; env: SeededEnvironment; devices: Device[] }> {
   const storage = new MemoryStorage();
   const env = new SeededEnvironment(42);
   await initVault(storage, env);
@@ -25,10 +29,11 @@ async function setup(names: string[]): Promise<{ storage: Storage; devices: Devi
       env,
       actorId: name,
       deviceName: name,
+      ...(rails === undefined ? {} : { rails }),
     });
     return { files, engine };
   });
-  return { storage, devices };
+  return { storage, env, devices };
 }
 
 const text = (files: MemoryLocalFiles, path: string): string | undefined => {
@@ -63,6 +68,20 @@ describe('SyncEngine', () => {
     await syncAll(devices);
     expect(text(mac.files, 'a.md')).toBe('ONE\ntwo\nthree\nFOUR\n');
     expect(text(phone.files, 'a.md')).toBe('ONE\ntwo\nthree\nFOUR\n');
+  });
+
+  it('keeps a byte order mark through a merge', async () => {
+    const { devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    await write(mac.files, 'a.md', '\uFEFFone\ntwo\nthree\n');
+    await syncAll(devices);
+    await write(mac.files, 'a.md', '\uFEFFONE\ntwo\nthree\n');
+    await write(phone.files, 'a.md', '\uFEFFone\ntwo\nTHREE\n');
+    await syncAll(devices);
+    for (const d of devices) {
+      expect(Array.from(d.files.get('a.md') ?? []).slice(0, 3)).toEqual([0xef, 0xbb, 0xbf]);
+      expect(text(d.files, 'a.md')).toBe('\uFEFFONE\ntwo\nTHREE\n');
+    }
   });
 
   it('keeps both versions when the same line changes on both sides', async () => {
@@ -258,5 +277,151 @@ describe('SyncEngine', () => {
     expect(text(macFiles, 'a.md')).toBe('one\n');
     expect(text(macFiles, 'a (conflict mac 202610200900).md')).toBe('one\ntwo\nmac\n');
     expect(paths(phoneFiles)).toEqual(paths(macFiles));
+  });
+});
+
+async function logLength(storage: Storage): Promise<number> {
+  return (await storage.list('log/')).keys.length;
+}
+
+describe('SyncEngine pull-only', () => {
+  it('applies remote changes and sends nothing', async () => {
+    const { storage, devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    await write(mac.files, 'a.md', 'from mac\n');
+    await syncAll([mac]);
+    await write(phone.files, 'b.md', 'from phone\n');
+    const report = await phone.engine.sync({ pullOnly: true });
+    expect(report).toMatchObject({ commits: 0, unsent: 1, settled: false });
+    expect(text(phone.files, 'a.md')).toBe('from mac\n');
+    expect(await logLength(storage)).toBe(1);
+    await mac.engine.sync();
+    expect(paths(mac.files)).toEqual(['a.md']);
+
+    await syncAll(devices);
+    expect(paths(mac.files)).toEqual(['a.md', 'b.md']);
+  });
+
+  it('merges a remote edit into a local edit without sending the result', async () => {
+    const { storage, devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    await write(mac.files, 'a.md', 'one\ntwo\nthree\n');
+    await syncAll(devices);
+    await write(mac.files, 'a.md', 'ONE\ntwo\nthree\n');
+    await mac.engine.sync();
+    await write(phone.files, 'a.md', 'one\ntwo\nTHREE\n');
+    const before = await logLength(storage);
+    const report = await phone.engine.sync({ pullOnly: true });
+    expect(report.unsent).toBe(1);
+    expect(text(phone.files, 'a.md')).toBe('ONE\ntwo\nTHREE\n');
+    expect(await logLength(storage)).toBe(before);
+    await syncAll(devices);
+    expect(text(mac.files, 'a.md')).toBe('ONE\ntwo\nTHREE\n');
+  });
+
+  it('keeps a differing local file as a conflict copy on a first pull', async () => {
+    const { devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    await write(mac.files, 'same.md', 'same\n');
+    await write(mac.files, 'diff.md', 'mac\n');
+    await syncAll([mac]);
+    await write(phone.files, 'same.md', 'same\n');
+    await write(phone.files, 'diff.md', 'phone\n');
+    const report = await phone.engine.sync({ pullOnly: true });
+    expect(report).toMatchObject({ conflictCopies: 1, unsent: 1 });
+    expect(paths(phone.files)).toEqual([
+      'diff (conflict phone 202610200900).md',
+      'diff.md',
+      'same.md',
+    ]);
+    expect(text(phone.files, 'diff.md')).toBe('mac\n');
+  });
+});
+
+describe('SyncEngine safety rails', () => {
+  async function twelveFiles(): Promise<{ storage: Storage; devices: [Device, Device] }> {
+    const { storage, devices } = await setup(['mac', 'phone'], {});
+    const [mac] = devices as [Device, Device];
+    for (let i = 0; i < 12; i++)
+      await write(mac.files, `n${String(i).padStart(2, '0')}.md`, `${i}\n`);
+    await syncAll(devices);
+    return { storage, devices: devices as [Device, Device] };
+  }
+
+  it('stops before deleting many files in the bucket, and continues when allowed', async () => {
+    const { storage, devices } = await twelveFiles();
+    const [mac, phone] = devices;
+    for (let i = 0; i < 10; i++) mac.files.userRemove(`n${String(i).padStart(2, '0')}.md`);
+    const before = await logLength(storage);
+    const error = await mac.engine.sync().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SafetyRailError);
+    expect(error).toMatchObject({ rail: 'remote-deletes', count: 10, total: 12 });
+    expect(await logLength(storage)).toBe(before);
+    // Pull-only sends no deletes, so it does not trip.
+    expect((await mac.engine.sync({ pullOnly: true })).unsent).toBe(10);
+
+    expect((await mac.engine.sync({ allowMassDelete: true })).settled).toBe(true);
+    await expect(phone.engine.sync()).rejects.toMatchObject({
+      rail: 'local-deletes',
+      count: 10,
+      total: 12,
+    });
+    expect(paths(phone.files)).toHaveLength(12);
+    expect((await phone.engine.sync({ allowMassDelete: true })).settled).toBe(true);
+    expect(paths(phone.files)).toEqual(['n10.md', 'n11.md']);
+  });
+
+  it('lets a few deletes through', async () => {
+    const { devices } = await twelveFiles();
+    const [mac, phone] = devices;
+    for (let i = 0; i < 9; i++) mac.files.userRemove(`n0${i}.md`);
+    await syncAll(devices);
+    expect(paths(phone.files)).toEqual(['n09.md', 'n10.md', 'n11.md']);
+  });
+
+  it('applies the file limit to any vault size', async () => {
+    const { devices } = await setup(['mac'], { maxFiles: 3, minFiles: 100 });
+    const [mac] = devices as [Device];
+    for (let i = 0; i < 8; i++) await write(mac.files, `n${i}.md`, `${i}\n`);
+    await syncAll(devices);
+    for (let i = 0; i < 4; i++) mac.files.userRemove(`n${i}.md`);
+    await expect(mac.engine.sync()).rejects.toMatchObject({ rail: 'remote-deletes', count: 4 });
+  });
+
+  it('stops when the device has no files left', async () => {
+    const { storage, devices } = await setup(['mac'], {});
+    const [mac] = devices as [Device];
+    await write(mac.files, 'a.md', 'a\n');
+    await syncAll(devices);
+    mac.files.userRemove('a.md');
+    await expect(mac.engine.sync()).rejects.toMatchObject({ rail: 'empty-vault', count: 1 });
+    expect(await logLength(storage)).toBe(1);
+  });
+});
+
+describe('verifyLocal', () => {
+  it('reports missing, extra, changed, and case-changed files', async () => {
+    const { storage, env, devices } = await setup(['mac']);
+    const [mac] = devices as [Device];
+    await write(mac.files, 'a.md', 'a\n');
+    await write(mac.files, 'b.md', 'b\n');
+    await write(mac.files, 'c.md', 'c\n');
+    await write(mac.files, 'd.md', 'd\n');
+    await syncAll(devices);
+    const clean = await verifyLocal(storage, env, mac.files);
+    expect(clean).toEqual({ seq: 1, headFiles: 4, localFiles: 4, problems: [] });
+
+    mac.files.userRemove('a.md');
+    await write(mac.files, 'b.md', 'changed\n');
+    mac.files.userRemove('c.md');
+    await write(mac.files, 'C.md', 'c\n');
+    await write(mac.files, 'e.md', 'e\n');
+    const report = await verifyLocal(storage, env, mac.files);
+    expect(report.problems).toEqual([
+      { path: 'a.md', problem: 'missing' },
+      { path: 'b.md', problem: 'content' },
+      { path: 'c.md', problem: 'path' },
+      { path: 'e.md', problem: 'extra' },
+    ]);
   });
 });

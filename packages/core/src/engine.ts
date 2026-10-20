@@ -43,6 +43,58 @@ export interface SyncEngineOptions {
   readonly maxOpsPerCommit?: number;
   /** Write a checkpoint after a commit whose seq is a multiple of this. Default 500. */
   readonly checkpointEvery?: number;
+  /** Stop before mass deletes or when the local files look gone. Off when not set. */
+  readonly rails?: SafetyRails;
+}
+
+/**
+ * Limits that stop a sync before it deletes many files. A sync trips a rail
+ * when it would delete more than `maxFiles` files, or at least `minFiles`
+ * files that are more than `maxFraction` of the files. With `emptyVault`, a
+ * sync that would send changes also trips when the device has no files at
+ * all but synced files that the head still has.
+ */
+export interface SafetyRails {
+  /** Default 50. */
+  readonly maxFiles?: number;
+  /** Default 0.2. */
+  readonly maxFraction?: number;
+  /** The fraction rule applies from this many deletes. Default 10. */
+  readonly minFiles?: number;
+  /** Default true. */
+  readonly emptyVault?: boolean;
+}
+
+/** Options for one `sync` call. */
+export interface SyncRunOptions {
+  /** Apply remote changes to the device, but send nothing. */
+  readonly pullOnly?: boolean;
+  /** The user confirmed the deletes that tripped a rail: do not check the rails. */
+  readonly allowMassDelete?: boolean;
+}
+
+/**
+ * A sync stopped at a safety rail before it changed anything for that
+ * reason. `local` deletes are remote deletes that would remove files on the
+ * device; `remote` deletes are files missing on the device that would be
+ * deleted in the bucket.
+ */
+export class SafetyRailError extends Error {
+  override readonly name = 'SafetyRailError';
+
+  constructor(
+    readonly rail: 'local-deletes' | 'remote-deletes' | 'empty-vault',
+    readonly count: number,
+    readonly total: number,
+  ) {
+    super(
+      rail === 'empty-vault'
+        ? `The device has no files, but ${count} files were synced before`
+        : rail === 'local-deletes'
+          ? `The sync would delete ${count} of ${total} files on this device`
+          : `The sync would delete ${count} of ${total} files in the bucket`,
+    );
+  }
 }
 
 export interface SyncReport {
@@ -52,6 +104,8 @@ export interface SyncReport {
   readonly localChanges: number;
   /** Conflict copies this device created. */
   readonly conflictCopies: number;
+  /** Ops that a pull-only sync did not send. */
+  readonly unsent: number;
   /** True when local files and the head agree at the end. */
   readonly settled: boolean;
 }
@@ -106,7 +160,7 @@ export class SyncEngine {
     return this.#remote;
   }
 
-  async sync(): Promise<SyncReport> {
+  async sync(run: SyncRunOptions = {}): Promise<SyncReport> {
     const vault = await this.#remote.getVault();
     if (vault === null)
       throw new ProtocolError('The bucket has no vault.json. Initialise the vault first.');
@@ -132,7 +186,7 @@ export class SyncEngine {
 
     const synced = new Map(Object.entries(state.synced));
     const intents = new Map(Object.entries(state.intents ?? {}));
-    const counters = { commits: 0, localChanges: 0, conflictCopies: 0 };
+    const counters = { commits: 0, localChanges: 0, conflictCopies: 0, unsent: 0 };
     let pendingClaim: PendingClaim | null = state.pending;
     const save = async (pending: PendingClaim | null = pendingClaim): Promise<void> => {
       pendingClaim = pending;
@@ -162,6 +216,7 @@ export class SyncEngine {
       await this.#remote.catchUp(manifest);
       const reconciler = new Reconciler(
         this.#options,
+        run,
         this.#remote,
         manifest,
         synced,
@@ -183,6 +238,11 @@ export class SyncEngine {
       await save(null);
       if (ops.length === 0) {
         if (reconciler.localChanges === 0) return { ...counters, settled: true };
+        continue;
+      }
+      if (run.pullOnly === true) {
+        if (reconciler.localChanges === 0)
+          return { ...counters, unsent: ops.length, settled: false };
         continue;
       }
 
@@ -330,6 +390,7 @@ class Reconciler {
    */
   constructor(
     readonly options: SyncEngineOptions,
+    readonly runOptions: SyncRunOptions,
     readonly remote: RemoteVault,
     readonly head: Manifest,
     readonly synced: Map<string, SyncedFile>,
@@ -340,6 +401,8 @@ class Reconciler {
   async run(): Promise<Op[]> {
     for (const file of await this.options.local.list()) this.#local.set(pathKey(file.path), file);
     this.#matchSynced();
+    const rails = this.options.rails;
+    if (rails !== undefined && this.runOptions.allowMassDelete !== true) this.#checkRails(rails);
     await this.#applyRemoteChanges();
     await this.#applyRemoteMoves();
     await this.#applyRemoteCreates();
@@ -389,6 +452,43 @@ class Reconciler {
         this.#untracked.delete(pathKey(chosen.path));
         this.#paths.set(fileId, chosen.path);
       }
+    }
+  }
+
+  // ------------------------------------------------------------ safety rails
+
+  /** Throws `SafetyRailError` before a pass that would delete too much. Runs before any change. */
+  #checkRails(rails: SafetyRails): void {
+    const maxFiles = rails.maxFiles ?? 50;
+    const maxFraction = rails.maxFraction ?? 0.2;
+    const minFiles = rails.minFiles ?? 10;
+    const trips = (count: number, total: number): boolean =>
+      count > maxFiles || (count >= minFiles && count > maxFraction * total);
+
+    const pullOnly = this.runOptions.pullOnly === true;
+    if (rails.emptyVault !== false && !pullOnly && this.#local.size === 0) {
+      const synced = [...this.synced.keys()].filter((id) => this.head.file(id)?.deleted === false);
+      if (synced.length > 0) throw new SafetyRailError('empty-vault', synced.length, synced.length);
+    }
+    let localDeletes = 0;
+    let remoteDeletes = 0;
+    for (const [fileId, s] of this.synced) {
+      const h = this.head.file(fileId);
+      if (h === undefined) continue;
+      const path = this.#paths.get(fileId);
+      const local = path === undefined ? undefined : this.#file(path);
+      if (local === undefined) {
+        if (!h.deleted && h.rev === s.rev) remoteDeletes++;
+      } else if (h.deleted && h.rev !== s.rev && local.hash === s.hash && local.path === s.path) {
+        localDeletes++;
+      }
+    }
+    if (trips(localDeletes, this.#local.size)) {
+      throw new SafetyRailError('local-deletes', localDeletes, this.#local.size);
+    }
+    const live = [...this.head.liveFiles()].length;
+    if (!pullOnly && trips(remoteDeletes, live)) {
+      throw new SafetyRailError('remote-deletes', remoteDeletes, live);
     }
   }
 
