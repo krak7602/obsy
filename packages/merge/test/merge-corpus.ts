@@ -10,6 +10,10 @@
  * folder with `ours.md`, `theirs.md`, and an optional `base.md`. A case
  * without `base.md` is a no-base case; git then gets an empty base.
  *
+ * A case name's part before `--`, if any, is its group. The output then
+ * also counts clean and conflict results per group; generated corpora use
+ * the edit kind as the group (see corpus-generate.ts).
+ *
  * Output never contains note content or case names, unless `--list`
  * (case names per category) or `--show <case>` (one case in full) is
  * given. The runner writes only to a temporary directory outside the
@@ -22,7 +26,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { MergeInput, MergeResult } from '../src/index.ts';
-import { compare, GitMergeFile, type Comparison } from './oracle.ts';
+import { compare, GitMergeFile, type Comparison, type Diff3Regions } from './oracle.ts';
 
 interface Options {
   readonly corpus: string;
@@ -71,12 +75,16 @@ function isInside(path: string, root: string): boolean {
 
 type Merge = (input: MergeInput) => MergeResult;
 
-async function loadMerge(): Promise<Merge> {
+interface MergeModule {
+  readonly merge3: Merge;
+  readonly diff3Regions: Diff3Regions;
+}
+
+async function loadMerge(): Promise<MergeModule> {
   const built = join(here, '..', 'dist', 'index.js');
   if (!existsSync(built))
     usage('The merge package is not built. Run: pnpm --filter @obsy/merge run build');
-  const module = (await import(pathToFileURL(built).href)) as { merge3: Merge };
-  return module.merge3;
+  return (await import(pathToFileURL(built).href)) as MergeModule;
 }
 
 interface Case {
@@ -128,7 +136,7 @@ async function main(): Promise<void> {
     usage('The corpus directory must be outside the repository');
   if (!statSync(corpus).isDirectory()) usage('The corpus path is not a directory');
 
-  const merge3 = await loadMerge();
+  const { merge3, diff3Regions } = await loadMerge();
   const git = new GitMergeFile();
   const names = readdirSync(corpus, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -144,7 +152,7 @@ async function main(): Promise<void> {
       const oracle = git.run(input.base ?? '', input.ours, input.theirs);
       console.log(
         JSON.stringify(
-          { comparison: compare(input, result, oracle), obsy: result, git: oracle },
+          { comparison: compare(input, result, oracle, diff3Regions), obsy: result, git: oracle },
           null,
           2,
         ),
@@ -158,6 +166,7 @@ async function main(): Promise<void> {
     const comparisons = new Counter<Comparison>();
     const skipped = new Counter<string>();
     const byCategory = new Map<Comparison, string[]>();
+    const groups = new Counter<string>();
     const timings: number[] = [];
     let gitMs = 0;
     let largest = 0;
@@ -186,6 +195,8 @@ async function main(): Promise<void> {
 
       const kind = input.base === null ? 'no-base' : 'with-base';
       outcome.add(`${kind}:${result.status}`);
+      const separator = name.indexOf('--');
+      if (separator > 0) groups.add(`${name.slice(0, separator)}:${result.status}`);
       if (result.status === 'clean') {
         for (const rule of result.rules) rules.add(rule);
         if (result.rules.length === 0) rules.add('(plain diff3 or fast path)');
@@ -198,7 +209,7 @@ async function main(): Promise<void> {
           conflicts.add(kinds);
         }
       }
-      const comparison = compare(input, result, oracle);
+      const comparison = compare(input, result, oracle, diff3Regions);
       comparisons.add(comparison);
       byCategory.set(comparison, [...(byCategory.get(comparison) ?? []), name]);
     }
@@ -213,6 +224,7 @@ async function main(): Promise<void> {
       cleanRules: Object.fromEntries(rules.entries()),
       conflictKinds: Object.fromEntries(conflicts.entries()),
       comparisonWithGit: Object.fromEntries(comparisons.entries()),
+      groups: Object.fromEntries(groups.entries()),
       obsyMs: {
         total: Number(total.toFixed(1)),
         mean: Number((total / Math.max(1, timings.length)).toFixed(3)),
@@ -237,6 +249,7 @@ async function main(): Promise<void> {
       section('clean results by rule', summary.cleanRules);
       section('conflicts by kind', summary.conflictKinds);
       section('comparison with git merge-file', summary.comparisonWithGit);
+      if (groups.counts.size > 0) section('outcome by group', summary.groups);
       const ms = summary.obsyMs;
       console.log(
         `obsy ms: total ${ms.total}  mean ${ms.mean}  p50 ${ms.p50}  p95 ${ms.p95}  max ${ms.max}`,

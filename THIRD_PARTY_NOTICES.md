@@ -36,3 +36,32 @@ These are reimplementations, not copied code. They are listed for completeness.
 
 - **mulberry32** (seeded PRNG in `packages/storage-testkit/src/runtime.ts`, also bundled in the platform probe), by Tommy Ettinger, released into the public domain.
 - **FNV-1a** (test etag hash in `packages/storage-testkit/src/memory-storage.ts`), by Glenn Fowler, Landon Curt Noll, and Kiem-Phong Vo, public domain.
+
+## @jest/diff-sequences
+
+- Used by: `@obsy/merge`, as an npm dependency (`@jest/diff-sequences` 30.5.0), for the Myers line diff. Its source is not copied into this repository. Bundles that include `@obsy/merge` ship it and must keep this notice.
+- Source: <https://github.com/jestjs/jest/tree/main/packages/diff-sequences>
+- Licence: MIT
+
+```text
+Copyright (c) Meta Platforms, Inc. and affiliates.
+Copyright Contributors to the Jest project.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

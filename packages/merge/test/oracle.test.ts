@@ -1,14 +1,14 @@
 import fc from 'fast-check';
 import { afterAll, describe, expect, it } from 'vite-plus/test';
 
-import { merge3 } from '../src/index.ts';
+import { diff3Regions, merge3 } from '../src/index.ts';
 import { tripleArb, type FormatMode, type Triple } from './arbitraries.ts';
 import { compare, GitMergeFile, type Comparison } from './oracle.ts';
 
 /**
  * Compares merge3 with `git merge-file` on generated triples. Where git is
  * clean, obsy must be clean with the same text, except in the categories
- * that docs/learning/merge-spike.md explains.
+ * that docs/learning/merge-spike.md and docs/learning/merge-diff.md explain.
  *
  * OBSY_ORACLE_RUNS sets the cases per survey (default 300).
  * OBSY_ORACLE_SEED sets the seed. OBSY_ORACLE_EXAMPLES=1 prints two
@@ -35,7 +35,7 @@ function survey(formats: readonly FormatMode[], withBase: boolean): Map<Comparis
   for (const triple of fc.sample(tripleArb(formats), { numRuns: RUNS, seed: SEED })) {
     const input = { base: withBase ? triple.base : null, ours: triple.ours, theirs: triple.theirs };
     const oracle = git.run(withBase ? triple.base : '', triple.ours, triple.theirs);
-    const comparison = compare(input, merge3(input), oracle);
+    const comparison = compare(input, merge3(input), oracle, diff3Regions);
     found.set(comparison, [...(found.get(comparison) ?? []), triple]);
   }
   const counts = [...found]

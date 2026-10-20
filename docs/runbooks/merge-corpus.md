@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: the runner exists. No run on a real corpus is recorded yet. The merge rules are on [Merge and conflicts](../subsystems/merge.md); the meaning of each output category is on the [merge spike](../learning/merge-spike.md#oracle-categories) page.
+Status: the runner and a generator exist. A generated corpus on real notes ran on 2026-10-20 ([results](../learning/merge-diff.md#generated-corpus-on-real-notes)). No corpus of real concurrent edits exists yet. The merge rules are on [Merge and conflicts](../subsystems/merge.md); the meaning of each output category is on the [merge spike](../learning/merge-spike.md#oracle-categories) page, with the changes in [merge diff](../learning/merge-diff.md#oracle).
 
 ### Safety rules
 
@@ -33,7 +33,32 @@ One folder per case, directly under the corpus directory:
 
 A case without `base.md` is a no-base case: obsy gets `base: null`, and git gets an empty base file. A case is skipped and counted when `ours.md` or `theirs.md` is missing, or when a file contains a NUL byte (binary files are out of scope).
 
-How to collect real cases is still open. Each case must keep the meaning of the three files above.
+A case name's part before `--`, if any, is its group. The runner then also prints clean and conflict counts per group.
+
+How to collect real concurrent edits is still open. Each case must keep the meaning of the three files above.
+
+### Generate cases from real notes
+
+`corpus-generate.ts` builds cases from a copy of a vault: each note as it is becomes the base, and generated edits make ours and theirs. It tests the merge on real note shapes (length, blank lines, frontmatter, task lists) without edit history.
+
+1. Copy the vault's Markdown files to a folder outside the repository, for example with `rsync -a --include='*/' --include='*.md' --exclude='.obsidian/' --exclude='*' <vault>/ <copy>/`. Never point the generator at the live vault.
+2. From the repository root: `node packages/merge/test/corpus-generate.ts <copy> <corpus-dir> [--seed <n>]`. `<corpus-dir>` must not exist; its parent must. Both must be outside the repository.
+3. Run the corpus as below. The groups show each edit kind.
+
+| Edit kind | Ours | Theirs | Expected |
+| --- | --- | --- | --- |
+| `append-both` | Appends a line at the end | Appends another line at the end | Clean (`union-insert`) |
+| `append-same` | Appends a line | Appends the same line | Clean |
+| `task-and-append` | Ticks an open task | Appends a line | Clean |
+| `far-edits` | Edits a line in the first third | Edits a line in the last third | Clean |
+| `frontmatter-and-body` | Adds a frontmatter key, or frontmatter | Edits a body line | Clean |
+| `under-heading-both` | Inserts a line under a heading | Inserts another line under the same heading | Clean (`union-insert`) |
+| `two-sections` | Appends to one section | Appends to a later section | Clean |
+| `same-line` | Edits a line | Edits the same line differently | Conflict |
+| `adjacent-lines` | Edits a line | Edits the next line | Conflict |
+| `delete-vs-edit` | Deletes a section | Edits a line in that section | Conflict |
+
+Case names are `<kind>--<hash of the note path>`, so they do not show note names. Case content is still private.
 
 ### Run the corpus
 

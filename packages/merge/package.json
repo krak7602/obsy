@@ -17,7 +17,7 @@
     "build": "vp pack"
   },
   "dependencies": {
-    "node-diff3": "3.2.1"
+    "@jest/diff-sequences": "30.5.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

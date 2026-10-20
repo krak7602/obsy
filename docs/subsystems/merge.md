@@ -1,6 +1,6 @@
 ---
 title: Merge and conflicts
-aliases: [obsy/merge, merge3, three-way merge, diff3, node-diff3, conflict copies, conflict handling, union merge, frontmatter merge]
+aliases: [obsy/merge, merge3, three-way merge, diff3, diff3Regions, diffLines, Myers diff, work limit, conflict copies, conflict handling, union merge, frontmatter merge]
 updated: 2026-10-20
 ---
 
@@ -35,6 +35,9 @@ The result is one of two shapes:
   - `{ kind: 'frontmatter', reason }`: the frontmatter block conflicts as a whole. `reason` is `unparsed`, `presence`, `order`, `preamble`, or `invalid-result`.
   - `{ kind: 'line-endings' }`: both sides changed the line-ending style in different ways.
   - `{ kind: 'no-base' }`: there is no base, and neither side strictly extends the other.
+  - `{ kind: 'work-limit' }`: aligning the body needed more work than the merge allows (see [Line diff](#line-diff)).
+
+The package also exports `diff3Regions(a, o, b)`, the plain three-way line comparison without the Markdown rules. Tests use it as a baseline.
 
 The merge never returns conflict markers.
 
@@ -43,8 +46,8 @@ The merge never returns conflict markers.
 Existing behavior, except where a rule is marked as accepted design.
 
 - **Fast paths.** If `ours` equals `theirs`, the result is `ours`. If one side equals `base`, the result is the other side, byte for byte.
-- **Line-level three-way merge** against the base, with `node-diff3` (MIT). A change on one side only is applied. The same change on both sides is applied once. Changes from both sides that overlap or touch (adjacent lines) are a conflict, as in `git merge-file`.
-- **Anchors.** Before the diff, lines that all three texts share at the start are set aside. The rest is split at anchor lines: non-blank lines that occur exactly once in each text, in the same order in all three (the patience-diff idea). `node-diff3` then merges each segment. Changes on two sides of an anchor never touch. Without anchors, `node-diff3` is too slow for long notes.
+- **Line-level three-way merge** against the base (see [Line diff](#line-diff)). A change on one side only is applied. The same change on both sides is applied once. Changes from both sides that overlap or touch (adjacent lines) are a conflict, as in `git merge-file`.
+- **Anchors.** Before the diff, lines that all three texts share at the start are set aside. The rest is split at anchor lines: non-blank lines that occur exactly once in each text, in the same order in all three (the patience-diff idea). Each segment is then merged with `diff3Regions`. Changes on two sides of an anchor never touch.
 - **Concurrent inserts at the same anchor**, where neither side deleted a base line there, are both kept: theirs first, then ours (commit order). Lines that both inserts share at the start or the end are kept once. When one insert then contains the other, the result is the larger insert (`contained-insert`); otherwise both are kept (`union-insert`). Blank lines at the edge of a shared start or end stay with each insert, so that two new paragraphs stay separate.
 - **Frontmatter** is a leading block between two lines that are exactly `---`, after an optional byte order mark. When only one side changed the block, that side's block is used unchanged. When both changed it, it is merged key by key (`frontmatter-keys`):
   - A top-level key starts at a line `key:` or `"quoted key":` at column 0. Its entry includes the following indented lines, `- ` items, blank lines, and comments. Untouched entries keep their exact text.
@@ -67,12 +70,24 @@ Existing behavior, except where a rule is marked as accepted design.
 
 The note at the path is never left with conflict markers. See [Conflict copies by default](../decisions/2026-10-19-conflict-copies.md).
 
+### Line diff
+
+Existing behavior. `diffLines` in `packages/merge/src/diff.ts` is the only place that chooses a diff algorithm:
+
+- **Myers O(ND) diff** from `@jest/diff-sequences` (MIT, maintained by the Jest project). Its cost grows with the size of the change, not with how often lines repeat.
+- **Unmatched lines set aside first.** Lines that do not occur in the other list can never match. Removing them before the diff keeps a full rewrite cheap and does not change the result's size.
+- **Changes slid among equal lines.** When a change could sit at several places among equal lines (for example which of three blank lines was deleted), it is slid up and down, joined with neighbouring changes, and placed where it lines up with a change in the other text, else at the lowest place. This follows git's documented behaviour, so obsy and `git merge-file` decide alike next to blank lines.
+- **Three-way regions.** `diff3Regions` diffs the base against each side, sorts the changes by base position, and joins changes that overlap or touch. A region changed on one side takes that side's lines; a region changed on both sides goes to the rules above.
+- **Work limit.** All diffs of one merge share a budget of 50 million line comparisons. When it runs out, the merge returns a `work-limit` conflict, which the caller handles like any conflict (a conflict copy). Only heavy reordering of a long note with repeated lines reaches it; it takes about 0.4 s on an Apple M4 Pro.
+
+`node-diff3` was used until 2026-10-20 and was removed: its alignment grows roughly with the cube of the line count on repeated lines ([evidence](../learning/merge-diff.md)).
+
 ### Known limits
 
 Observed in the [phase 0 spike](../learning/merge-spike.md):
 
-- **Speed on repeated lines.** `node-diff3`'s line alignment slows down steeply when many lines repeat and no anchor exists between them. A note made only of repeated lines takes about 0.2 s at 1,000 lines and tens of seconds at 5,000 lines. Notes with distinct lines merge in a few milliseconds at 5,000 lines.
-- **Alignment among repeated lines** can differ from git. The choice decides whether some edits next to blank lines are clean or a conflict.
+- **Speed.** A 5,000-line note merges in about 1.5 to 3.5 ms on an Apple M4 Pro, with or without repeated lines ([evidence](../learning/merge-diff.md)). Heavy reordering of a long note can reach the work limit.
+- **Alignment among repeated lines** can still differ from git in rare cases, mostly when one side added frontmatter: obsy merges frontmatter and body apart, git sees one change at the top. The choice decides whether some edits next to blank lines are clean or a conflict.
 - **A blank last line and a removed final line break cancel out.** If ours adds a blank last line and theirs removes the final line break, the result has one final line break and no blank line.
 - **Frontmatter conflicts are per key.** A key removed on one side and changed on the other conflicts, even where a line merge would be clean.
 - **Union order is commit order**, not meaning. Risk 3 on the [roadmap](../roadmap.md#risks) needs the real corpus.
@@ -88,4 +103,5 @@ Existing behavior: unit tests for each rule, property tests with `fast-check`, a
 ## History
 
 - 2026-10-19: Merge rules accepted, from the former `DESIGN.md`.
+- 2026-10-20: `node-diff3` replaced by a Myers diff with change sliding and a work limit; `work-limit` conflict kind added ([evidence](../learning/merge-diff.md)).
 - 2026-10-20: `merge3` implemented in the phase 0 spike, with the API, the anchor, union, frontmatter, no-base, and text-format details above ([spike](../learning/merge-spike.md)).

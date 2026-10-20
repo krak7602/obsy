@@ -11,9 +11,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { diff3Merge } from 'node-diff3';
+import type { Diff3Region, MergeInput, MergeResult, MergeRule } from '../src/index.ts';
 
-import type { MergeInput, MergeResult, MergeRule } from '../src/index.ts';
+/** `diff3Regions` from `@obsy/merge`, passed in so that this file imports no code. */
+export type Diff3Regions = (a: string[], o: string[], b: string[]) => Diff3Region[];
 
 export interface GitResult {
   readonly clean: boolean;
@@ -58,14 +59,24 @@ export function gitLines(text: string): string[] {
 }
 
 /**
- * Plain node-diff3 on git's line model, with no Markdown layer and no
- * anchors. It separates node-diff3 versus git alignment differences from
- * differences that obsy's own rules cause.
+ * Plain diff3 on git's line model, with no Markdown layer and no anchors:
+ * obsy's `diff3Regions`, where a region changed on both sides is a
+ * conflict unless both sides made the same change. It separates diff
+ * alignment differences from differences that obsy's own rules cause.
  */
-export function plainDiff3(base: string, ours: string, theirs: string): GitResult {
-  const regions = diff3Merge(gitLines(ours), gitLines(base), gitLines(theirs));
-  if (regions.some((region) => region.conflict !== undefined)) return { clean: false, text: '' };
-  return { clean: true, text: regions.flatMap((region) => region.ok ?? []).join('') };
+export function plainDiff3(
+  regionsOf: Diff3Regions,
+  base: string,
+  ours: string,
+  theirs: string,
+): GitResult {
+  const text: string[] = [];
+  for (const region of regionsOf(gitLines(ours), gitLines(base), gitLines(theirs))) {
+    if (region.stable) text.push(...region.lines);
+    else if (region.a.lines.join('') === region.b.lines.join('')) text.push(...region.a.lines);
+    else return { clean: false, text: '' };
+  }
+  return { clean: true, text: text.join('') };
 }
 
 /**
@@ -126,12 +137,17 @@ function lacksFinalNewline(input: MergeInput): boolean {
 }
 
 /** Compares one obsy result with git's result on the same input. */
-export function compare(input: MergeInput, obsy: MergeResult, git: GitResult): Comparison {
+export function compare(
+  input: MergeInput,
+  obsy: MergeResult,
+  git: GitResult,
+  regionsOf: Diff3Regions,
+): Comparison {
   const { ours, theirs } = input;
   const base = input.base ?? '';
   if (obsy.status === 'clean' && git.clean && obsy.text === git.text) return 'agree-clean';
   if (obsy.status === 'conflict' && !git.clean) return 'agree-conflict';
-  const plain = plainDiff3(base, ours, theirs);
+  const plain = plainDiff3(regionsOf, base, ours, theirs);
   const plainAgrees = plain.clean === git.clean && (!plain.clean || plain.text === git.text);
 
   if (obsy.status === 'clean' && !git.clean) {
@@ -140,7 +156,7 @@ export function compare(input: MergeInput, obsy: MergeResult, git: GitResult): C
     if (!plainAgrees) return 'obsy-only:diff3-alignment';
     if (hasFrontmatter(input)) return 'obsy-only:frontmatter-split';
     if (lacksFinalNewline(input)) return 'obsy-only:final-newline';
-    // By elimination: plain node-diff3 agrees with git, so obsy's prefix
+    // By elimination: plain diff3 agrees with git, so obsy's prefix
     // trim and anchors chose another alignment. Inspect these cases.
     return 'obsy-only:segment-alignment';
   }
@@ -159,7 +175,12 @@ export function compare(input: MergeInput, obsy: MergeResult, git: GitResult): C
   if (kinds.has('frontmatter') || kinds.has('frontmatter-key')) return 'git-only:frontmatter';
   if (kinds.has('line-endings')) return 'git-only:line-endings';
   if (kinds.has('no-base')) return 'git-only:no-base';
+  if (kinds.has('work-limit')) return 'git-only:work-limit';
   if (!plainAgrees) return 'git-only:diff3-alignment';
   if (lacksFinalNewline(input)) return 'git-only:final-newline';
+  // A side added frontmatter and changed the body's first lines. git sees
+  // one change at the top; obsy merges the body apart, so the body change
+  // can touch the other side's change.
+  if (hasFrontmatter(input)) return 'git-only:frontmatter-split';
   return 'git-only:unexplained';
 }
