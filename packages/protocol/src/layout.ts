@@ -14,7 +14,7 @@ export const CHECKPOINT_PREFIX = 'checkpoints/';
 export const SEQ_DIGITS = 16;
 
 /** The largest sequence number: the largest safe integer, which has 16 digits. */
-export const MAX_SEQ = Number.MAX_SAFE_INTEGER;
+export const MAX_SEQ: number = Number.MAX_SAFE_INTEGER;
 
 export function isSeq(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;

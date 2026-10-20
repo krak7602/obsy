@@ -166,6 +166,24 @@ describe('SyncEngine', () => {
     expect(paths(phone.files)).toEqual(['a.md', 'b.md']);
   });
 
+  it('restores an edited file even when the device renamed another file onto its path', async () => {
+    const { devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    await write(mac.files, 'a.md', 'A\n');
+    await write(mac.files, 'b.md', 'B\n');
+    await syncAll(devices);
+    await write(phone.files, 'a.md', 'A edited\n');
+    await phone.engine.sync();
+    mac.files.userRemove('a.md');
+    mac.files.userMove('b.md', 'a.md');
+    await syncAll(devices);
+    for (const d of devices) {
+      expect(text(d.files, 'a.md')).toBe('A edited\n');
+      expect(paths(d.files)).toEqual(['a (conflict mac 202610200900).md', 'a.md']);
+      expect(text(d.files, 'a (conflict mac 202610200900).md')).toBe('B\n');
+    }
+  });
+
   it('removes a file deleted on another device', async () => {
     const { devices } = await setup(['mac', 'phone']);
     const [mac, phone] = devices as [Device, Device];

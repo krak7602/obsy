@@ -171,6 +171,8 @@ export class SyncEngine {
 
       const commit = await this.#prepare(manifest, ops);
       if (commit === null) continue;
+      // Never send a commit that breaks the rules: check it on a copy first.
+      manifest.clone().apply(commit);
       const body = JSON.stringify(commit);
       const pending: PendingClaim = { seq: commit.seq, body, opId: commit.opId };
       await save(pending);
@@ -295,15 +297,27 @@ class Reconciler {
   #matchSynced(): void {
     const claimed = new Set<string>();
     const missing: string[] = [];
-    for (const [fileId, s] of [...this.synced].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    // A stale synced entry can share its path with a newer one (the head
+    // moved it away and another file took the path). Each local file is
+    // claimed once: by the entry with the same content, else the newest.
+    const order = [...this.synced].sort(([a, x], [b, y]) => {
+      const local = this.#local.get(pathKey(x.path));
+      const xMatch = local?.hash === x.hash ? 1 : 0;
+      const yMatch = this.#local.get(pathKey(y.path))?.hash === y.hash ? 1 : 0;
+      if (xMatch !== yMatch) return yMatch - xMatch;
+      if (x.rev !== y.rev) return y.rev - x.rev;
+      return a < b ? -1 : 1;
+    });
+    for (const [fileId, s] of order) {
       const key = pathKey(s.path);
-      if (this.#local.has(key)) {
+      if (this.#local.has(key) && !claimed.has(key)) {
         this.#paths.set(fileId, (this.#local.get(key) as LocalFile).path);
         claimed.add(key);
       } else {
         missing.push(fileId);
       }
     }
+    missing.sort();
     for (const [key, file] of this.#local)
       if (!claimed.has(key)) this.#untracked.set(key, { path: file.path });
 
@@ -386,6 +400,27 @@ class Reconciler {
     this.conflictCopies++;
   }
 
+  /**
+   * Frees `path` on the device for a head file. An untracked file there
+   * yields to a conflict copy name. A synced file there was renamed onto
+   * this path by the device (the head has another file here); it yields
+   * to a conflict copy name too and stays synced, so its rename is
+   * committed to the new name.
+   */
+  async #makeRoom(path: string): Promise<void> {
+    const key = pathKey(path);
+    const occupant = this.#local.get(key);
+    if (occupant === undefined) return;
+    if (this.#untracked.has(key)) {
+      await this.#yieldUntracked(key);
+      return;
+    }
+    const owner = [...this.#paths].find(([, p]) => pathKey(p) === key)?.[0];
+    const to = this.#conflictPath(occupant.path);
+    await this.#move(occupant.path, to, occupant.hash);
+    if (owner !== undefined) this.#paths.set(owner, to);
+  }
+
   // ------------------------------------------------------------ remote changes to synced files
 
   /**
@@ -410,11 +445,7 @@ class Reconciler {
           continue;
         }
         // Edited or moved remotely: edit beats delete. Restore the head version.
-        const occupant = this.#local.get(pathKey(h.path));
-        if (occupant !== undefined) {
-          if (!this.#untracked.has(pathKey(h.path))) continue; // resolved in a later pass
-          await this.#yieldUntracked(pathKey(h.path));
-        }
+        if (this.#local.has(pathKey(h.path))) await this.#makeRoom(h.path);
         await this.#write(h.path, await this.#blob(h.hash), null);
         this.#paths.set(fileId, h.path);
         this.synced.set(fileId, { path: h.path, rev: h.rev, hash: h.hash });
@@ -562,11 +593,7 @@ class Reconciler {
       const untracked = this.#untracked.get(key);
       if (untracked === undefined) {
         // A synced file that the device renamed onto this path. It yields.
-        const owner = [...this.#paths].find(([, p]) => pathKey(p) === key)?.[0];
-        if (owner === undefined) continue;
-        const to = this.#conflictPath(occupant.path);
-        await this.#move(occupant.path, to, occupant.hash);
-        this.#paths.set(owner, to);
+        await this.#makeRoom(h.path);
         await this.#write(h.path, await this.#blob(h.hash), null);
         this.#paths.set(fileId, h.path);
         this.synced.set(fileId, { path: h.path, rev: h.rev, hash: h.hash });
@@ -644,8 +671,14 @@ class Reconciler {
         ops.push({ type: 'move', fileId, from: h.path, to: local.path, baseRev: h.rev });
       }
     }
-    // Paths that this commit frees: a new file may take them.
+    // Paths that this commit frees: a new file or a move may take them.
     const leaving = new Set(ops.filter((op) => op.type !== 'put').map((op) => op.fileId));
+    for (let i = ops.length - 1; i >= 0; i--) {
+      const op = ops[i] as Op;
+      if (op.type !== 'move') continue;
+      const owner = this.head.liveAt(op.to);
+      if (owner !== undefined && owner !== op.fileId && !leaving.has(owner)) ops.splice(i, 1);
+    }
     for (const [, untracked] of [...this.#untracked].sort(([a], [b]) => (a < b ? -1 : 1))) {
       if (ops.length >= max) break;
       const local = this.#file(untracked.path) as LocalFile;

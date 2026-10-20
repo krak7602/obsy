@@ -124,7 +124,7 @@ export class SeededEnvironment implements Environment {
   #seed: number;
   #clock: number;
 
-  constructor(seed: number, start = Date.UTC(2026, 9, 20, 9, 0)) {
+  constructor(seed: number, start: number = Date.UTC(2026, 9, 20, 9, 0)) {
     this.#seed = seed >>> 0 || 1;
     this.#clock = start;
   }

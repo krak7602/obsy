@@ -15,3 +15,4 @@ export { RemoteVault, withRetry, type ClaimResult } from './remote';
 export { SyncEngine, type SyncEngineOptions, type SyncReport } from './engine';
 export { initVault, webEnvironment } from './vault';
 export { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
+export { AgentWriter, type AgentResult } from './agent';
