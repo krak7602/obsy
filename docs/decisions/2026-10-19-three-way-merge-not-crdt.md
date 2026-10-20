@@ -15,7 +15,7 @@ obsy must keep offline-edited plain Markdown safe. The workload is snapshot-base
 
 Stored truth is plain files with revisions. Concurrent edits are merged with a deterministic line-level three-way merge (`node-diff3`, MIT) with a Markdown layer, against a stored base. When the merge is not clean, obsy writes a visible conflict copy. CRDTs are not used for stored truth.
 
-The current rules are on [Merge and conflicts](../subsystems/merge.md).
+The current rules are on [Merge and conflicts](../subsystems/merge.md). On 2026-10-20 the diff library changed from `node-diff3` to a Myers diff ([decision](2026-10-20-myers-diff-for-merge.md)); the three-way merge approach is unchanged.
 
 ## Consequences
 

@@ -8,7 +8,7 @@ updated: 2026-10-20
 
 ## Current
 
-Status: observed results from synthetic and generated inputs, 2026-10-20. The real-vault corpus was not available. No corpus result exists yet. The current merge contract is on [Merge and conflicts](../subsystems/merge.md).
+Status: observed results from synthetic and generated inputs, 2026-10-20, with `node-diff3`. `node-diff3` was replaced the same day; the new results and a generated corpus on real notes are on [Merge diff replacement](merge-diff.md). The current merge contract is on [Merge and conflicts](../subsystems/merge.md).
 
 ### Question
 
@@ -160,10 +160,11 @@ These refine the accepted rules. None contradicts [Merge and conflicts](../subsy
 
 ### Open questions
 
-- **Speed on repeated lines.** A note made only of repeated lines takes 1.6 s at 2,000 lines and 27 s at 5,000 lines on the desktop. Options: replace `node-diff3`'s alignment with an O(ND) diff and keep the diff3 region logic (this changes the accepted "wraps `node-diff3`" design); or add a size or time limit that returns a conflict. Neither is decided.
+- **Speed on repeated lines.** A note made only of repeated lines takes 1.6 s at 2,000 lines and 27 s at 5,000 lines on the desktop. Settled on 2026-10-20: a Myers diff replaced `node-diff3`, with a work limit as a backstop ([results](merge-diff.md)).
 - **YAML parser.** The line-based splitter treats unusual frontmatter as one unit. A permissively licensed YAML parser could merge more, at the cost of a dependency and of exact formatting.
 - **Blank lines in union inserts.** Only real notes can show whether blank lines duplicated at the edge of two inserts look right.
 
 ## History
 
+- 2026-10-20: Speed question settled by replacing `node-diff3` ([merge diff](merge-diff.md)).
 - 2026-10-20: Spike run on generated inputs. `merge3` implemented, four defects found and fixed, oracle categories defined.
