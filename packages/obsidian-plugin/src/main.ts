@@ -18,6 +18,7 @@ import { PAIRING_ACTION } from './pairing';
 import { createRequestUrlFetch } from './transport/request-url-fetch';
 import { VerifyModal, ask } from './ui/modals';
 import { JoinWithCodeModal, PairingCodeModal } from './ui/pairing-modals';
+import { ProposalsModal } from './ui/proposals-modal';
 import { ObsySettingTab } from './ui/settings-tab';
 
 const DEVICE_KEY = 'obsy-device';
@@ -52,6 +53,7 @@ export default class ObsyPlugin extends Plugin {
   service!: SyncService;
   #scheduler!: SyncScheduler;
   #files!: VaultLocalFiles;
+  #port!: ObsidianVaultPort;
   #kv: IdbKeyValue | null = null;
   #statusBar: HTMLElement | null = null;
   /** Set while a mobile app is hidden: a running sync stops at the next safe point. */
@@ -69,6 +71,7 @@ export default class ObsyPlugin extends Plugin {
     this.app.saveLocalStorage(DEVICE_KEY, this.device);
 
     const port = new ObsidianVaultPort(this.app);
+    this.#port = port;
     this.#files = new VaultLocalFiles(
       port,
       Platform.isMobileApp ? { chunkBytes: MOBILE_CHUNK_BYTES } : {},
@@ -126,6 +129,15 @@ export default class ObsyPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: 'review-proposals',
+      name: 'Review agent proposals',
+      checkCallback: (checking) => {
+        if (this.device.mode !== 'full') return false;
+        if (!checking) void this.reviewProposals();
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'pair-device',
       name: 'Pair another device',
       checkCallback: (checking) => {
@@ -164,6 +176,13 @@ export default class ObsyPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('modify', (file) => onChange(file)));
     this.registerEvent(this.app.vault.on('delete', (file) => onChange(file)));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => onChange(file, oldPath)));
+    // Typing in a note tells agents to wait or propose (presence).
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (_editor, info) => {
+        const path = info.file?.path;
+        if (path !== undefined && !this.#port.isOwnEdit(path)) this.service.editing(path);
+      }),
+    );
     // On mobile, sync pauses while the app is hidden: iOS stops plugins
     // seconds later. Desktop keeps syncing, because macOS reports a window
     // behind other windows as hidden, and an edit saved just before the user
@@ -269,6 +288,17 @@ export default class ObsyPlugin extends Plugin {
       new VerifyModal(this.app, report).open();
     } catch (error) {
       new Notice(`Obsy: verify failed. ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async reviewProposals(): Promise<void> {
+    try {
+      const proposals = await this.service.proposals();
+      new ProposalsModal(this.app, this.service, proposals).open();
+    } catch (error) {
+      new Notice(
+        `Obsy: could not read proposals. ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

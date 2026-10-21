@@ -48,6 +48,19 @@ export class ObsySettingTab extends PluginSettingTab {
         },
       },
       {
+        name: 'Agent proposals',
+        desc: 'Changes that agents could not make safely, waiting for your answer.',
+        render: (setting) => {
+          const count = this.plugin.service.status.proposals;
+          setting.setDesc(
+            count === null
+              ? 'Changes that agents could not make safely. Not checked yet.'
+              : `${count} open. Changes that agents could not make safely, waiting for your answer.`,
+          );
+          this.#button(setting, 'Review', () => this.plugin.reviewProposals());
+        },
+      },
+      {
         type: 'group',
         heading: 'Bucket',
         items: [

@@ -319,6 +319,9 @@ importers:
 
   packages/obsidian-plugin:
     dependencies:
+      '@obsy/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@obsy/core':
         specifier: workspace:*
         version: link:../core

@@ -6,7 +6,16 @@ import type { EditorPort, VaultFileInfo, VaultPort } from './vault-port';
 
 /** `VaultPort` on the Obsidian vault and workspace. */
 export class ObsidianVaultPort implements VaultPort {
+  /** The note and time of the last editor change that obsy made itself. */
+  #ownEdit: { path: string; at: number } | null = null;
+
   constructor(readonly app: App) {}
+
+  /** True when an editor change in `path` is likely obsy's own (applied in the last second). */
+  isOwnEdit(path: string): boolean {
+    const own = this.#ownEdit;
+    return own !== null && own.path === path && Date.now() - own.at < 1000;
+  }
 
   files(): VaultFileInfo[] {
     return this.app.vault
@@ -94,6 +103,7 @@ export class ObsidianVaultPort implements VaultPort {
       return {
         getText: () => editor.getValue(),
         replace: (from, to, text) => {
+          this.#ownEdit = { path, at: Date.now() };
           editor.transaction({
             changes: [{ from: editor.offsetToPos(from), to: editor.offsetToPos(to), text }],
           });
