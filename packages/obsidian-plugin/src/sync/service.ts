@@ -339,13 +339,14 @@ export class SyncService {
     return this.#exclusive(() => this.#run(options));
   }
 
-  async #run(options: RunOptions): Promise<SyncReport | null> {
+  /** With `force`, it runs even while automatic sync is paused, without the notice of a manual run. */
+  async #run(options: RunOptions, force = false): Promise<SyncReport | null> {
     const device = this.host.device();
     if (device.mode === 'off') {
       this.#set('off', 'Not connected.');
       return null;
     }
-    if (!options.manual && !device.autoSync) return null;
+    if (!force && !options.manual && !device.autoSync) return null;
     const missing = missingSettings(this.host.settings());
     if (missing.length > 0) {
       this.#set('not-configured', `Missing: ${missing.join(', ')}.`);
@@ -585,9 +586,11 @@ export class SyncService {
     return this.#exclusive(async () => {
       if (this.host.device().mode !== 'full')
         throw new Error('Accepting a proposal needs full sync mode.');
-      await this.#run({});
-      const result = await this.#admin(this.host.storage()).accept(id);
-      await this.#run({});
+      await this.#run({}, true);
+      const storage = this.host.storage();
+      const result = await this.#admin(storage).accept(id);
+      await this.#run({}, true);
+      await this.#recount(storage);
       return result;
     });
   }
@@ -596,8 +599,16 @@ export class SyncService {
     return this.#exclusive(async () => {
       if (this.host.device().mode !== 'full')
         throw new Error('Rejecting a proposal needs full sync mode.');
-      return this.#admin(this.host.storage()).reject(id);
+      const storage = this.host.storage();
+      const resolution = await this.#admin(storage).reject(id);
+      await this.#recount(storage);
+      return resolution;
     });
+  }
+
+  async #recount(storage: Storage): Promise<void> {
+    await this.#checkProposals(storage, true).catch(() => undefined);
+    this.#set(this.#status.state, this.#status.detail);
   }
 
   /** Compares the vault with the head in the bucket. */

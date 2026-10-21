@@ -320,6 +320,8 @@ describe('SyncService and agents', () => {
       throw new Error('expected proposals');
     await mac.service.run({ manual: true });
     expect(mac.service.status.proposals).toBe(2);
+    // Accepting syncs even while automatic sync is paused.
+    mac.service.setAutoSync(false);
     expect(mac.host.notices.some((n) => n.includes('2 agent proposals to review'))).toBe(true);
     // The user edits the note before accepting: the proposal merges with it.
     mac.vault.userWrite('daily.md', '# Day\n## Log\n- a\n- mine\n# Other\n## Log\n');
@@ -332,6 +334,7 @@ describe('SyncService and agents', () => {
     expect(mac.vault.text('daily.md')).toBe(
       '# Day\n## Log\n- a\n- mine\n# Other\n## Log\n- agent\n',
     );
+    expect(mac.service.status.proposals).toBe(1);
     expect((await mac.service.rejectProposal(second.proposalId)).outcome).toBe('rejected');
     expect(mac.vault.text('new.md')).toBeUndefined();
     expect(await mac.service.proposals()).toEqual([]);

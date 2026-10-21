@@ -709,6 +709,8 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     // The owner on A reviews in the modal: accepts the first, rejects the second.
     await sync(a);
     expect(await status(a)).toMatchObject({ proposals: 2 });
+    // Accepting syncs by itself, also while automatic sync is paused.
+    await run(a, 'p.service.setAutoSync(false); return null;');
     await run(a, 'await p.reviewProposals(); return null;');
     const shown = await run<string>(
       a,
@@ -716,10 +718,12 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     );
     expect(shown).toContain('- 09:00 deferred');
     await run(a, 'await click("Accept"); await sleep(200); await click("Reject"); return null;');
-    for (let i = 0; i < 100; i++) {
-      if ((await run<number | null>(a, 'return p.service.status.proposals;')) === 0) break;
+    let left = await run<number | null>(a, 'return p.service.status.proposals;');
+    for (let i = 0; i < 100 && left !== 0; i++) {
       await sleep(200);
+      left = await run<number | null>(a, 'return p.service.status.proposals;');
     }
+    expect(left).toBe(0);
     await run(
       a,
       'document.querySelector(".modal-container .modal-close-button")?.click(); return null;',
