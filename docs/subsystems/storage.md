@@ -1,7 +1,7 @@
 ---
 title: Storage adapters
 aliases: [Storage interface, storage-s3, storage-r2, storage-testkit, conformance suite, providers, S3, R2, PreconditionFailed, TransientStorageError, race harness]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Storage adapters
@@ -107,7 +107,7 @@ For a 409 on `If-Match`, AWS says to fetch the object's etag again before the re
 
 ### `@obsy/storage-r2`
 
-Existing behavior. `new R2Storage(bucket, { prefix? })`, where `bucket` is a Workers `R2Bucket` binding (typed structurally as `R2BucketLike`, so the package needs no Workers types).
+Existing behavior. `new R2Storage(bucket, { prefix? })`, where `bucket` is a Workers `R2Bucket` binding (typed structurally as `R2BucketLike`, so the package needs no Workers types). A Workers `R2Bucket` fits `R2BucketLike` without a cast; `test/binding-type.test.ts` checks it against `@cloudflare/workers-types`.
 
 - `putIfAbsent` calls `put` with `onlyIf: { etagDoesNotMatch: '*' }`; `putIfMatch` with `onlyIf: { etagMatches: etag }`. A failed condition makes `put` return `null`, which becomes `PreconditionFailed`.
 - `list` uses `prefix`, `startAfter`, `limit`, and the binding's cursor for short pages.
@@ -155,6 +155,8 @@ How to run each target is in the [storage conformance runbook](../runbooks/stora
 | AWS S3 | Supported provider | Not run yet |
 
 ## History
+
+- 2026-10-21: `R2BucketLike` types `onlyIf` with the two conditions it sends, so a Workers `R2Bucket` fits without a cast.
 
 - 2026-10-19: Interface and provider requirements accepted, from the former `DESIGN.md`.
 - 2026-10-20: The conformance checks run without Vitest, for the platform probe. Added a key pair that separates code point order from UTF-16 order.

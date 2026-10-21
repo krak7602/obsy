@@ -17,7 +17,7 @@ Status: existing behavior. Package `@obsy/simulator` (test only, Node).
 A seed drives everything: the order of every bucket request and local file call, user actions, faults, and IDs. The same seed always gives the same run.
 
 - **Actors:** two devices (`mac`, `phone`) with their own files and saved state; two agents (`VaultAgent`): `agent` waits while a device edits the note, `bot` proposes instead; and the owner (`VaultAdmin`), who accepts (80%) or rejects open proposals, and undoes random agent commits. All share one in-memory bucket.
-- **Agent operations**, each with a new token: append under `## Agent` in the daily note (40%), append at the end of a random note if it exists (15%), replace or insert block `w` in the daily note or `b.md` (25%), create a random note if absent (10%), and propose the current content plus a line (10%).
+- **Agent operations**, each with a new token: append under `## Agent` in the daily note (35%), append at the end of a random note if it exists (15%), replace or insert block `w` in the daily note or `b.md` (20%), create a random note if absent (10%), rewrite a whole note with `replaceIfUnchanged` from what it read, keeping every user line, dropping one of its own lines half of the time, and adding one (10%), and propose the current content plus a line (10%).
 - **Presence:** every user edit writes the device's presence record for that note, through the same faulty storage. Failures are ignored, as in the plugin.
 - **Users** create, edit, rename, and remove files from a small set of paths that includes case twins (`a.md`, `A.md`), normalisation twins (`café.md` in NFC and NFD), folders, and a non-text file type (`img.png`). Every line a user types is a unique token.
 - **Steps** (600 by default): run one waiting request or file call, a user action, start a sync, start an agent operation, start an owner action, crash a device mid-sync, take a device offline or online, land a delayed write, or advance the clock. One sync in five is pull-only, as on a device that joins a vault. One sync in ten is asked to stop at safe points, at random, as when iOS hides the app. The safety rails are on with limits too high to trip, so that their check runs on every pass. The phone has a 40-byte download size limit (`maxFileSize`), so files grow past it.
@@ -66,9 +66,11 @@ When a run finds a failing seed, replay it with `--seed <n> --trace`, fix the ca
 
 ### Check that the checker works
 
-After a change to the simulator, plant a bug and confirm that seeds fail. Examples that must fail: skip writing the conflict copy in `#mergeContent`; let a remote delete remove a locally edited file; treat a lost claim as won in `RemoteVault.claim`; write the head content instead of the merge result; for the size limit, skip the yield of a local file at the path of a skipped head file in `#applyRemoteCreates`; for agents, treat every block as owned (`isOwned`), reuse the text read before a lost claim in `VaultAgent.#edit`, commit an accepted proposal without merging it with later edits, or restore the old content when an undo's three-way revert conflicts.
+After a change to the simulator, plant a bug and confirm that seeds fail. Examples that must fail: skip writing the conflict copy in `#mergeContent`; let a remote delete remove a locally edited file; treat a lost claim as won in `RemoteVault.claim`; write the head content instead of the merge result; for the size limit, skip the yield of a local file at the path of a skipped head file in `#applyRemoteCreates`; for agents, treat every block as owned (`isOwned`), reuse the text read before a lost claim in `VaultAgent.#edit`, commit an accepted proposal without merging it with later edits, restore the old content when an undo's three-way revert conflicts, or skip the revision check in `replaceIfUnchanged`.
 
 ## History
+
+- 2026-10-21: Whole-note rewrites with `replaceIfUnchanged` added to the agents.
 
 - 2026-10-21: Two agents and the owner added, with presence; the agent check now covers every agent and owner commit by token.
 

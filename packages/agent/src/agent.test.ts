@@ -192,6 +192,53 @@ describe('VaultAgent writes', () => {
   });
 });
 
+describe('VaultAgent replaceIfUnchanged', () => {
+  it('replaces only at the revision it read, across devices and lost claims', async () => {
+    const { agent, device, storage, text, write } = await setup();
+    expect(await agent.replaceIfUnchanged(DAILY, '# Day\n', { baseRev: null })).toMatchObject({
+      status: 'committed',
+    });
+    expect(await agent.replaceIfUnchanged(DAILY, 'again\n', { baseRev: null })).toEqual({
+      status: 'changed',
+      rev: 1,
+    });
+    await device.sync();
+    const read = await agent.read(DAILY);
+    if (read === null) throw new Error('no file');
+    // A device edit after the read: nothing is written.
+    await write(DAILY, '# Day\nmine\n');
+    await device.sync();
+    expect(await agent.replaceIfUnchanged(DAILY, '# Day\n- plan\n', { baseRev: read.rev })).toEqual(
+      { status: 'changed', rev: 2 },
+    );
+    // A commit to another file wins the claim: the agent claims again and commits.
+    storage.hook = async () => {
+      await write('other.md', 'x\n');
+      await device.sync();
+    };
+    const fresh = await agent.read(DAILY);
+    const result = await agent.replaceIfUnchanged(DAILY, '# Day\nmine\n- plan\n', {
+      baseRev: fresh?.rev ?? null,
+    });
+    expect(result).toMatchObject({ status: 'committed', seq: 4 });
+    // The same file changed right before the claim: changed, nothing written.
+    storage.hook = async () => {
+      await device.sync();
+      await write(DAILY, '# Day\nmine, edited\n- plan\n');
+      await device.sync();
+    };
+    expect(await agent.replaceIfUnchanged(DAILY, '# Day\n- replaced\n', { baseRev: 4 })).toEqual({
+      status: 'changed',
+      rev: 5,
+    });
+    await device.sync();
+    expect(text(DAILY)).toBe('# Day\nmine, edited\n- plan\n');
+    await expect(agent.replaceIfUnchanged(DAILY, 'x', { baseRev: 0 })).rejects.toThrow(
+      AgentInputError,
+    );
+  });
+});
+
 describe('VaultAgent blocks', () => {
   it('inserts, replaces, and leaves an unchanged block alone', async () => {
     const { agent, device, text } = await setup();

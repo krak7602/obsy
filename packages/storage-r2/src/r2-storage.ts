@@ -14,7 +14,8 @@ import {
 
 /**
  * The parts of the Workers `R2Bucket` binding that this adapter uses.
- * Structural, so that the package needs no Workers type definitions.
+ * Structural, so that the package needs no Workers type definitions. A
+ * Workers `R2Bucket` fits it without a cast (`test/binding-type.test.ts`).
  */
 export interface R2BucketLike {
   get(key: string): Promise<{ readonly etag: string; arrayBuffer(): Promise<ArrayBuffer> } | null>;
@@ -22,7 +23,8 @@ export interface R2BucketLike {
     key: string,
     value: Uint8Array,
     options?: {
-      onlyIf?: unknown;
+      /** The only conditions this adapter sends. */
+      onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string };
       httpMetadata?: { contentType?: string };
     },
   ): Promise<{ readonly etag: string } | null>;

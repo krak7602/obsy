@@ -273,22 +273,42 @@ class World {
     const textPaths = PATHS.filter((path) => !path.endsWith('.png'));
     let label: string;
     let run: () => Promise<{ status: string }>;
-    if (roll < 0.4) {
+    if (roll < 0.35) {
       label = `append section ${DAILY}`;
       run = () => agent.appendToSection(DAILY, ['## Agent'], [line]);
-    } else if (roll < 0.55) {
+    } else if (roll < 0.5) {
       const path = r.pick(textPaths) as string;
       label = `append ${path}`;
       run = () => agent.appendToSection(path, [], [line], { ifMissing: 'skip' });
-    } else if (roll < 0.8) {
+    } else if (roll < 0.7) {
       const path = r.chance(0.7) ? DAILY : 'b.md';
       const content = r.chance(0.5) ? line : `${line}\n- ${this.token('g')}`;
       label = `block ${path}`;
       run = () => agent.replaceBlock(path, 'w', content, { insert: { section: ['## Agent'] } });
-    } else if (roll < 0.9) {
+    } else if (roll < 0.8) {
       const path = r.pick(textPaths) as string;
       label = `create ${path}`;
       run = () => agent.createIfAbsent(path, `${line}\n`);
+    } else if (roll < 0.9) {
+      // Whole-note rewrite from what it read, as an agent that plans a
+      // daily note does: it keeps every user line, may drop one of its own
+      // lines, and adds one.
+      const path = r.chance(0.7) ? DAILY : (r.pick(textPaths) as string);
+      const dropOwn = r.chance(0.5);
+      label = `replace ${path}`;
+      run = async () => {
+        const current = await agent.read(path);
+        if (current !== null && current.text === null) return { status: 'skipped' };
+        let lines = (current?.text ?? '').split('\n').filter((l) => l !== '');
+        if (dropOwn) {
+          const own = lines.findIndex((l) => /^- g\d+$/.test(l));
+          if (own >= 0) lines = [...lines.slice(0, own), ...lines.slice(own + 1)];
+        }
+        lines.push(line);
+        return agent.replaceIfUnchanged(path, lines.map((l) => `${l}\n`).join(''), {
+          baseRev: current?.rev ?? null,
+        });
+      };
     } else {
       const path = r.pick(textPaths) as string;
       label = `propose ${path}`;

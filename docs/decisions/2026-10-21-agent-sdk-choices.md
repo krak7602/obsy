@@ -26,7 +26,7 @@ The [agent write discipline](2026-10-19-agent-write-discipline.md) and the accep
 3. **Answers are separate create-once records**, `resolutions/<id>.json`, with the outcome, the actor, and the commit. An accept commits first and writes the resolution second.
 4. **Presence is one overwritable record per device** (`presence/<device>.json`: path and time), written by that device only, with `putIfMatch` on the etag of its last write. The plugin writes it while the user types, at most every 30 s per note. The default deferral is `wait`: up to 5 minutes, then a proposal.
 5. **Undo is one commit, all or nothing.** A changed file is reverted three-way. When any file would lose a later edit, nothing is written.
-6. **No whole-file rewrite at all in this phase.** A generated note keeps its content in an owned block.
+6. **No whole-file rewrite at all in this phase.** A generated note keeps its content in an owned block. (Replaced later the same day by [Whole-note replacement for agents](2026-10-21-replace-if-unchanged.md).)
 7. **The CLI reads keys only from `OBSY_S3_*` variables or `--env-file`**, never from arguments, which appear in shell history and process lists.
 
 ## Consequences

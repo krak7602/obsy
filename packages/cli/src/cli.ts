@@ -52,6 +52,8 @@ Agent commands (they need an agent ID: --agent or OBSY_AGENT):
   block <path> <id> [--file f]         Replace the agent's block (content from stdin)
       [--insert] [--section heading]... Insert the block if it is missing
       [--expect hash]                  Require the content the agent last wrote
+  replace <path> --base-rev <n|none>   Replace the whole file only if it is still at rev n
+      [--file f]                       (none: only if it does not exist); else nothing is written
   propose <path> [--file f]            Propose new content for a file (from stdin)
       [--base-rev n] [--rationale text]
 
@@ -359,6 +361,18 @@ async function run(ctx: Context, command: string, args: readonly string[]): Prom
         });
       return report(ctx, result);
     }
+    case 'replace': {
+      const [path] = need(args, 1, 'replace <path> --base-rev <n|none> [--file f]');
+      const raw = ctx.values['base-rev'];
+      if (raw === undefined)
+        throw new UsageError('replace needs --base-rev (a revision, or none).');
+      const baseRev = raw === 'none' ? null : ctx.number('base-rev');
+      const result = await ctx.agent().replaceIfUnchanged(path as string, await ctx.content(), {
+        ...ctx.writeOptions(),
+        baseRev: baseRev ?? null,
+      });
+      return report(ctx, result);
+    }
     case 'propose': {
       const [path] = need(args, 1, 'propose <path> [--file f]');
       const baseRev = ctx.number('base-rev');
@@ -447,9 +461,12 @@ function report(ctx: Context, result: WriteResult): number {
     case 'skipped':
       text = `skipped: ${result.reason}\n`;
       break;
+    case 'changed':
+      text = `changed: the file is at ${result.rev === null ? 'no revision (missing)' : `rev ${result.rev}`} now; nothing written\n`;
+      break;
   }
   ctx.print(result, text);
-  return 0;
+  return result.status === 'changed' ? 1 : 0;
 }
 
 function formatRevision(r: Revision): string {

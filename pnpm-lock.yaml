@@ -415,6 +415,9 @@ importers:
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261013.1
+        version: 5.20261013.1
       '@obsy/storage-testkit':
         specifier: workspace:*
         version: link:../storage-testkit
@@ -502,6 +505,9 @@ packages:
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
+
+  '@cloudflare/workers-types@5.20261013.1':
+    resolution: {integrity: sha512-0SfkM/MA+oSIAzFFmjr0wZLH54oeCtugaOn8GpJDBnerQiML+rOPq2W6j6bBGE51o+N4DOd0tvMruLmkAQzlpw==}
 
   '@codemirror/state@6.7.6':
     resolution: {integrity: sha512-kAz+AncRtKuIknedxT1bq4XwXv4UowhbkHU1myPrtVb/jZtImWuV5BXzv5vK6i3kYACsdiZiQKFQQ5Mq7elW8w==}
@@ -3137,6 +3143,8 @@ snapshots:
 
   '@cloudflare/workerd-windows-64@1.20260730.1':
     optional: true
+
+  '@cloudflare/workers-types@5.20261013.1': {}
 
   '@codemirror/state@6.7.6':
     dependencies:

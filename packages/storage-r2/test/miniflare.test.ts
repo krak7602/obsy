@@ -10,7 +10,7 @@ import { R2Storage, type R2BucketLike } from '../src/index';
  * behaves; that needs a deployed Worker (docs/runbooks/storage-conformance.md).
  */
 const mf = new Miniflare({ modules: true, script: 'export default {}', r2Buckets: ['BUCKET'] });
-const bucket = (await mf.getR2Bucket('BUCKET')) as unknown as R2BucketLike;
+const bucket: R2BucketLike = await mf.getR2Bucket('BUCKET');
 const root = new R2Storage(bucket);
 let tests = 0;
 

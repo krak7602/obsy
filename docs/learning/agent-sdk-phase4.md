@@ -39,6 +39,8 @@ Phase 4 on the [roadmap](../roadmap.md) is done when concurrent human and agent 
 | Syncs started / pull-only / stopped at a safe point / finished | 6,654,606 / 1,331,749 / 440,171 / 3,714,163 |
 | Syncs that ended with an unexpected error | 0 (all 440,171 errors were stops) |
 
+A second run after `replaceIfUnchanged` was added (whole-note rewrites are 10% of agent operations): seeds 1 to 1,000,000, 0 failures, 2,452 s. Agent operations committed 7,569,383 times and made 2,279,810 proposals; the owner accepted 350,538, rejected 140,528, and undid 226,389.
+
 #### Mutation checks
 
 | Planted bug | Unit tests failed | Seeds failed (of 2,000) |
@@ -49,6 +51,7 @@ Phase 4 on the [roadmap](../roadmap.md) is done when concurrent human and agent 
 | After a lost claim, the agent reuses the text it read before | — | 304 |
 | Presence is ignored | 2 | — (presence is not an invariant) |
 | Accept does not sync while automatic sync is paused (plugin) | 1 | — |
+| `replaceIfUnchanged` skips the revision check | — | 65 |
 
 The first bug is rare in the simulator because simulated users seldom edit inside a block.
 
@@ -92,10 +95,13 @@ Final code, generated vault: 16 of 16 steps pass, including the new step:
 - The rate limit walks the log back one commit per request beyond the reader's cache, so a busy vault makes each CLI write slower.
 - One Mac, one Obsidian version, one local S3 server; no live R2 run of the command.
 
+- **The R2 adapter's binding type did not fit a real `R2Bucket`.** `onlyIf` was typed `unknown`, so a Workers `R2Bucket` could not be passed without a cast; obsy's own Miniflare test hid it with one. Found when the first agent was wired to the vault. A type test against `@cloudflare/workers-types` now checks it.
+
 ### Still open
 
-- Moving an existing agent's daily-note writes onto the SDK. The agent writes to the real vault, which obsy does not sync before the cutover (phase 5).
+- Moving an existing agent's daily-note writes onto the SDK: in progress in that agent's repository, with `replaceIfUnchanged`.
 
 ## History
 
+- 2026-10-21: Added `replaceIfUnchanged` results and the R2 binding type finding.
 - 2026-10-21: Created with the phase 4 results.

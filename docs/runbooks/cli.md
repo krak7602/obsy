@@ -55,6 +55,7 @@ obsy append daily/2026-10-21.md --section '## Log' -- '- 09:30 backup done'
 printf -- '- line one\n- line two\n' | obsy append daily/2026-10-21.md --section Log
 printf 'Sunny, 14 °C\n' | obsy block daily/2026-10-21.md weather --insert --section '## Weather'
 obsy create inbox/idea.md --file idea.md
+obsy replace notes/plan.md --base-rev 1234 --file plan.md  # only if still at rev 1234
 obsy propose notes/plan.md --file plan.md --rationale 'Reorder the steps'
 
 obsy proposals                                      # open proposals
@@ -79,7 +80,7 @@ Put lines that start with `-` after `--`. Text content comes from `--file` or st
 | Code | Meaning |
 | --- | --- |
 | 0 | Done. This includes `proposed`, `unchanged`, `exists`, and `skipped`; read the output or `--json` to tell them apart |
-| 1 | Failed: an error, `verify` found differences, `proposals accept` hit a conflict, or `undo` refused |
+| 1 | Failed: an error, `verify` found differences, `proposals accept` hit a conflict, `undo` refused, or `replace` found the file `changed` |
 | 2 | Bad arguments or configuration |
 
 ### Test

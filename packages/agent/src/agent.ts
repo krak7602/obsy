@@ -100,7 +100,13 @@ export type WriteResult =
       readonly reason: ProposalReason;
     }
   /** Nothing was done: the file is missing, or is not UTF-8 text. */
-  | { readonly status: 'skipped'; readonly reason: 'missing' | 'not-text' };
+  | { readonly status: 'skipped'; readonly reason: 'missing' | 'not-text' }
+  /**
+   * `replaceIfUnchanged` found another revision than `baseRev`: someone
+   * changed, created, or deleted the file since the caller read it. Nothing
+   * was written. `rev` is the live file's revision now, or null when none.
+   */
+  | { readonly status: 'changed'; readonly rev: number | null };
 
 /** An operation got input it cannot use. Not retryable. */
 export class AgentInputError extends Error {
@@ -341,6 +347,32 @@ export class VaultAgent {
       const inserted = await insertBlock(text, section, blockId, content);
       if (inserted.status === 'ok') return withBlockHash(inserted.text, blockId);
       return { kind: 'propose', text: atEnd, reason: 'anchor-ambiguous' };
+    });
+  }
+
+  /**
+   * Replaces the whole file at `path` with `content`, only if the live
+   * file is still at revision `baseRev` (from `read`); with `baseRev` null,
+   * only if no live file has the path key. This is a compare-and-swap on
+   * the bucket's log, across every device and agent: any change since the
+   * read gives `changed` and writes nothing. For agents that compute a
+   * whole note themselves, from the content they read, and keep the
+   * owner's lines by their own rules. A device that has unsynced edits to
+   * the file merges the new content with them as with any commit.
+   */
+  replaceIfUnchanged(
+    path: string,
+    content: string | Uint8Array,
+    options: WriteOptions & { readonly baseRev: number | null },
+  ): Promise<WriteResult> {
+    const { baseRev } = options;
+    if (baseRev !== null && (!Number.isSafeInteger(baseRev) || baseRev < 1))
+      return Promise.reject(new AgentInputError(`Not a revision: ${JSON.stringify(baseRev)}`));
+    const bytes = typeof content === 'string' ? encodeUtf8(content) : content;
+    return this.#edit(path, 'replaceIfUnchanged', options, async (ctx) => {
+      const rev = ctx.entry?.rev ?? null;
+      if (rev !== baseRev) return { kind: 'result', result: { status: 'changed', rev } };
+      return { kind: 'put', bytes };
     });
   }
 
