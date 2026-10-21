@@ -11,3 +11,32 @@
   width: 100%;
   font-family: var(--font-monospace);
 }
+
+.obsy-rationale {
+  font-style: italic;
+}
+
+.obsy-diff {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2);
+  max-height: 20em;
+  overflow-y: auto;
+}
+
+.obsy-diff-add {
+  background-color: rgba(var(--color-green-rgb), 0.15);
+}
+
+.obsy-diff-del {
+  background-color: rgba(var(--color-red-rgb), 0.15);
+  text-decoration: line-through;
+}
+
+.obsy-diff-skip {
+  color: var(--text-faint);
+}

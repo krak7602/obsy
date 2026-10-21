@@ -235,6 +235,53 @@ importers:
         specifier: 'catalog:'
         version: 1.3.0(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)(yaml@2.9.1)
 
+  packages/agent:
+    dependencies:
+      '@obsy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@obsy/merge':
+        specifier: workspace:*
+        version: link:../merge
+      '@obsy/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@obsy/storage-testkit':
+        specifier: workspace:*
+        version: link:../storage-testkit
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.10.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.3.0(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)(yaml@2.9.1)
+
+  packages/cli:
+    dependencies:
+      '@obsy/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@obsy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@obsy/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@obsy/storage-s3':
+        specifier: workspace:*
+        version: link:../storage-s3
+    devDependencies:
+      '@obsy/storage-testkit':
+        specifier: workspace:*
+        version: link:../storage-testkit
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.3.0(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)(yaml@2.9.1)
+
   packages/core:
     dependencies:
       '@obsy/merge':
@@ -272,6 +319,9 @@ importers:
 
   packages/obsidian-plugin:
     dependencies:
+      '@obsy/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@obsy/core':
         specifier: workspace:*
         version: link:../core
@@ -339,6 +389,9 @@ importers:
 
   packages/simulator:
     dependencies:
+      '@obsy/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@obsy/core':
         specifier: workspace:*
         version: link:../core

@@ -13,6 +13,7 @@
     "lint:obsidian": "cd ../.. && eslint --max-warnings 0 --config packages/obsidian-plugin/eslint.config.mjs packages/obsidian-plugin/src manifest.json packages/obsidian-plugin/probe/manifest.json"
   },
   "dependencies": {
+    "@obsy/agent": "workspace:*",
     "@obsy/core": "workspace:*",
     "@obsy/protocol": "workspace:*",
     "@obsy/storage-s3": "workspace:*",

@@ -1,4 +1,11 @@
 import {
+  PresenceWriter,
+  VaultAdmin,
+  proposalIds,
+  type AcceptResult,
+  type ProposalDetail,
+} from '@obsy/agent';
+import {
   RemoteVault,
   SafetyRailError,
   SyncEngine,
@@ -10,13 +17,18 @@ import {
   type SyncReport,
   type VerifyReport,
 } from '@obsy/core';
-import { ProtocolError, isStorageError, type Storage } from '@obsy/protocol';
+import { ProtocolError, isStorageError, type Resolution, type Storage } from '@obsy/protocol';
 
 import { decodePairingCode, encodePairingCode, type PairingInfo } from '../pairing';
 import type { DeviceSettings, ObsySettings } from '../settings';
 import { actorIdFor, maxFileSizeBytes, missingSettings } from '../settings';
 import type { IdbStateStore } from './idb-store';
 import type { VaultLocalFiles } from './vault-files';
+
+/** A presence record for one note is written at most this often while the user types. */
+export const PRESENCE_EVERY_MS = 30_000;
+/** Automatic syncs look for new agent proposals at most this often. */
+export const PROPOSALS_EVERY_MS = 5 * 60_000;
 
 /** The rails from docs/subsystems/obsidian-plugin.md#deletes-and-safety-rails. */
 export const RAILS: SafetyRails = { maxFiles: 50, maxFraction: 0.2, minFiles: 10 };
@@ -33,6 +45,8 @@ export interface SyncStatus {
   readonly unsent: number;
   /** Files left out by this device's size limit. */
   readonly skipped: number;
+  /** Open agent proposals at the last check, or null before the first. */
+  readonly proposals: number | null;
 }
 
 /** The two credential values, from SecretStorage. */
@@ -108,8 +122,14 @@ export class SyncService {
     lastSync: null,
     unsent: 0,
     skipped: 0,
+    proposals: null,
   };
   #queue: Promise<unknown> = Promise.resolve();
+  #presence: { readonly writer: PresenceWriter; readonly key: string } | null = null;
+  #lastPresence: { readonly path: string; readonly at: number } | null = null;
+  #presenceBusy = false;
+  #proposalsCheckedAt = Number.NEGATIVE_INFINITY;
+  #knownProposals = new Set<string>();
 
   constructor(readonly host: ServiceHost) {}
 
@@ -319,13 +339,14 @@ export class SyncService {
     return this.#exclusive(() => this.#run(options));
   }
 
-  async #run(options: RunOptions): Promise<SyncReport | null> {
+  /** With `force`, it runs even while automatic sync is paused, without the notice of a manual run. */
+  async #run(options: RunOptions, force = false): Promise<SyncReport | null> {
     const device = this.host.device();
     if (device.mode === 'off') {
       this.#set('off', 'Not connected.');
       return null;
     }
-    if (!options.manual && !device.autoSync) return null;
+    if (!force && !options.manual && !device.autoSync) return null;
     const missing = missingSettings(this.host.settings());
     if (missing.length > 0) {
       this.#set('not-configured', `Missing: ${missing.join(', ')}.`);
@@ -342,6 +363,10 @@ export class SyncService {
         ...(options.allowMassDelete === true ? { allowMassDelete: true } : {}),
       });
       await this.#afterSync();
+      if (device.mode === 'full') {
+        // Proposals are secondary: a failed check does not fail the sync.
+        await this.#checkProposals(storage, options.manual === true).catch(() => undefined);
+      }
       this.#set('idle', this.#summary(report), {
         lastSync: Date.now(),
         unsent: report.unsent,
@@ -472,6 +497,118 @@ export class SyncService {
     this.#set('error', `Sync failed: ${message}`);
     if (options.manual === true) this.host.notify(`Obsy: sync failed. ${message}`);
     return null;
+  }
+
+  // ---------------------------------------------------------------- agents
+
+  /**
+   * The user is editing `path`. Tells agents, through this device's presence
+   * record, at most every 30 s per note, so that they wait or propose
+   * instead of changing the note under the user. Only in full mode.
+   * Presence is advisory: a failed write is not reported.
+   */
+  editing(path: string): void {
+    if (this.host.device().mode !== 'full' || missingSettings(this.host.settings()).length > 0)
+      return;
+    const now = this.host.env.now().getTime();
+    const last = this.#lastPresence;
+    if (this.#presenceBusy || (last?.path === path && now - last.at < PRESENCE_EVERY_MS)) return;
+    this.#lastPresence = { path, at: now };
+    this.#presenceBusy = true;
+    void this.#writePresence(path, new Date(now)).finally(() => {
+      this.#presenceBusy = false;
+    });
+  }
+
+  async #writePresence(path: string, time: Date): Promise<void> {
+    try {
+      const settings = this.host.settings();
+      const id = actorIdFor(this.host.device().deviceName);
+      const key = JSON.stringify([settings.endpoint, settings.bucket, settings.prefix, id]);
+      if (this.#presence?.key !== key) {
+        this.#presence = {
+          writer: new PresenceWriter(this.host.storage(), this.host.env, id),
+          key,
+        };
+      }
+      await this.#presence.writer.write(path, time);
+    } catch {
+      // Try again at the next edit.
+      this.#lastPresence = null;
+    }
+  }
+
+  /** Counts open proposals, at most every five minutes unless `force`. Tells the user about new ones. */
+  async #checkProposals(storage: Storage, force: boolean): Promise<void> {
+    const now = this.host.env.now().getTime();
+    if (!force && now - this.#proposalsCheckedAt < PROPOSALS_EVERY_MS) return;
+    this.#proposalsCheckedAt = now;
+    const { open } = await proposalIds(storage, this.host.env);
+    const fresh = open.filter((id) => !this.#knownProposals.has(id));
+    this.#knownProposals = new Set(open);
+    this.#status = { ...this.#status, proposals: open.length };
+    if (fresh.length > 0) {
+      const count = `${open.length} agent proposal${open.length === 1 ? '' : 's'}`;
+      this.host.notify(`Obsy: ${count} to review. Run "Review agent proposals".`);
+    }
+  }
+
+  #admin(storage: Storage): VaultAdmin {
+    return new VaultAdmin({
+      storage,
+      env: this.host.env,
+      actor: { kind: 'device', id: actorIdFor(this.host.device().deviceName) },
+    });
+  }
+
+  /** Open proposals with their content, oldest first. */
+  proposals(): Promise<ProposalDetail[]> {
+    return this.#exclusive(async () => {
+      const storage = this.host.storage();
+      const admin = this.#admin(storage);
+      const out: ProposalDetail[] = [];
+      for (const proposal of await admin.openProposals()) {
+        const detail = await admin.proposal(proposal.id);
+        if (detail !== null) out.push(detail);
+      }
+      this.#knownProposals = new Set(out.map((d) => d.proposal.id));
+      this.#set(this.#status.state, this.#status.detail, { proposals: out.length });
+      return out;
+    });
+  }
+
+  /**
+   * Accepts a proposal: syncs first, so that edits made here are in the
+   * bucket and the proposal merges with them; then commits it as this
+   * device, and syncs again to bring it here. Only in full mode.
+   */
+  acceptProposal(id: string): Promise<AcceptResult> {
+    return this.#exclusive(async () => {
+      if (this.host.device().mode !== 'full')
+        throw new Error('Accepting a proposal needs full sync mode.');
+      await this.#run({}, true);
+      const storage = this.host.storage();
+      const result = await this.#admin(storage).accept(id);
+      await this.#run({}, true);
+      await this.#recount(storage);
+      return result;
+    });
+  }
+
+  rejectProposal(id: string): Promise<Resolution> {
+    return this.#exclusive(async () => {
+      if (this.host.device().mode !== 'full')
+        throw new Error('Rejecting a proposal needs full sync mode.');
+      const storage = this.host.storage();
+      const resolution = await this.#admin(storage).reject(id);
+      await this.#recount(storage);
+      return resolution;
+    });
+  }
+
+  async #recount(storage: Storage): Promise<void> {
+    await this.#checkProposals(storage, true).catch(() => undefined);
+    this.#set(this.#status.state, this.#status.detail);
   }
 
   /** Compares the vault with the head in the bucket. */

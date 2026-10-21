@@ -25,7 +25,7 @@ This page owns how to run the plugin in a real Obsidian desktop app against a lo
 pnpm run test:desktop
 ```
 
-The script builds the plugin, starts `obsy-s3-test` (versitygw) with random credentials, runs the scenario, and removes the container. It also works while your own Obsidian runs: the test instance has its own profile folder.
+The script builds the plugin and the `obsy` command, starts `obsy-s3-test` (versitygw) with random credentials, runs the scenario, and removes the container. It also works while your own Obsidian runs: the test instance has its own profile folder.
 
 | Variable | Effect |
 | --- | --- |
@@ -57,6 +57,7 @@ To test with a copy of a vault, copy it first, outside the repository, for examp
 | D pairs with a code, with a 1 MB size limit | The code alone fills in the settings; the credential goes to D's own secret names; the 3 MiB file is left out; verify: no differences, 1 skipped |
 | NFD name, case-only rename, case twins | An NFD name written by another program, a case-only rename, and `Twin.md`/`twin.md` made on A and B: one file each, the twin as a conflict copy |
 | Offline | The S3 container is stopped; edits on A and B; syncs fail and say so; after a restart of the container, the edits merge |
+| Agents and proposals | B types in an open note without saving: B's presence record names the note. An agent in `propose` mode proposes (`editing`); one in `ignore` mode commits, and B's open editor gets the line with the typing and cursor kept. Undo removes the agent's line and keeps the typing. A edits inside the agent's block, so its next change is a proposal (`block-edited`). In A's review dialog, Accept merges the first proposal with later edits and Reject answers the second. The built `obsy` command appends a line |
 | Killed mid-transfer | Obsidian is killed (`SIGKILL`) during a 24 MiB upload from A, restarted, then killed during the download on B, and restarted: the file arrives once and intact, with no temporary file and no repeated commit |
 | End | Verify shows no differences on A and B; both folders equal the head; no credential value in any `data.json` |
 
@@ -69,6 +70,8 @@ Folder trees are compared with names in NFC: macOS treats the NFC and NFD forms 
 - If a test Obsidian is left running, stop it with `pkill -f -- '--remote-debugging-port=19223'`. Stop the S3 server with `bash packages/storage-s3/scripts/s3-local.sh stop`.
 
 ## History
+
+- 2026-10-21: Added the agents and proposals step (phase 4).
 
 - 2026-10-21: Added pairing, the size limit, names, offline, and kill steps (phase 3).
 - 2026-10-21: Created with the phase 2 desktop test.

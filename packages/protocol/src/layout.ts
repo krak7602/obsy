@@ -1,4 +1,4 @@
-import { ProtocolError } from './records';
+import { ProtocolError, isActorId, isProposalId } from './records';
 import { hashHex, type ContentHash } from './hash';
 
 /**
@@ -9,6 +9,9 @@ export const VAULT_KEY = 'vault.json';
 export const LOG_PREFIX = 'log/';
 export const BLOB_PREFIX = 'blobs/sha256/';
 export const CHECKPOINT_PREFIX = 'checkpoints/';
+export const PROPOSAL_PREFIX = 'proposals/';
+export const RESOLUTION_PREFIX = 'resolutions/';
+export const PRESENCE_PREFIX = 'presence/';
 
 /** Sequence numbers are written with this many digits, so that key order is numeric order. */
 export const SEQ_DIGITS = 16;
@@ -58,4 +61,36 @@ export function parseCheckpointKey(key: string): number | null {
   if (match === null) return null;
   const seq = Number(match[1]);
   return isSeq(seq) ? seq : null;
+}
+
+/** `proposals/<id>.json` */
+export function proposalKey(id: string): string {
+  if (!isProposalId(id)) throw new ProtocolError(`Not a proposal ID: ${JSON.stringify(id)}`);
+  return `${PROPOSAL_PREFIX}${id}.json`;
+}
+
+/** `resolutions/<id>.json`: the answer to proposal `<id>`. */
+export function resolutionKey(id: string): string {
+  if (!isProposalId(id)) throw new ProtocolError(`Not a proposal ID: ${JSON.stringify(id)}`);
+  return `${RESOLUTION_PREFIX}${id}.json`;
+}
+
+const PROPOSAL_KEY = /^(?:proposals|resolutions)\/(p_[a-z2-7]{24})\.json$/;
+
+/** The proposal ID of a proposal or resolution key, or `null`. */
+export function parseProposalKey(key: string): string | null {
+  return PROPOSAL_KEY.exec(key)?.[1] ?? null;
+}
+
+/** `presence/<device>.json` */
+export function presenceKey(device: string): string {
+  if (!isActorId(device)) throw new ProtocolError(`Not a device ID: ${JSON.stringify(device)}`);
+  return `${PRESENCE_PREFIX}${device}.json`;
+}
+
+const PRESENCE_KEY = /^presence\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.json$/;
+
+/** The device ID of a presence key, or `null`. */
+export function parsePresenceKey(key: string): string | null {
+  return PRESENCE_KEY.exec(key)?.[1] ?? null;
 }

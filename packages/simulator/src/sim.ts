@@ -1,5 +1,12 @@
 import {
-  AgentWriter,
+  PresenceWriter,
+  VaultAdmin,
+  VaultAgent,
+  proposalIds,
+  readProposal,
+  readResolution,
+} from '@obsy/agent';
+import {
   MemoryLocalFiles,
   SeededEnvironment,
   SyncEngine,
@@ -48,6 +55,11 @@ export interface SimResult {
     crashes: number;
     conflictCopies: number;
     agentWrites: number;
+    /** Agent operations that ended as a proposal. */
+    agentProposals: number;
+    ownerAccepts: number;
+    ownerRejects: number;
+    ownerUndos: number;
     syncsStarted: number;
     pullOnlySyncs: number;
     stoppedSyncs: number;
@@ -76,6 +88,16 @@ const PATHS = [
   'deep/x/y.md',
 ];
 const DAILY = 'daily/2026-10-20.md';
+
+/** The actor ID of the owner's maintenance actions (accept, reject, undo). */
+const OWNER = 'owner';
+
+/** A token in note text: a letter for its kind (user text, binary, agent) and a counter. */
+const TOKEN = /(?<![0-9a-z])[tbg]\d+(?![0-9a-z])/g;
+
+function tokensOf(text: string): Set<string> {
+  return new Set(text.match(TOKEN) ?? []);
+}
 
 /**
  * The phone's `maxFileSize`, in bytes: about five lines. Files grow past it,
@@ -107,6 +129,7 @@ interface Device {
   readonly name: string;
   readonly files: MemoryLocalFiles;
   readonly engine: SyncEngine;
+  readonly presence: PresenceWriter;
   readonly maxFileSize: number;
   online: boolean;
 }
@@ -122,7 +145,10 @@ class World {
   readonly faults: { rates: FaultRates };
   readonly delayed: (() => Promise<void>)[] = [];
   readonly devices: Device[] = [];
-  readonly agent: AgentWriter;
+  /** `agent` waits while a device edits the note; `bot` proposes instead. */
+  readonly agents: readonly VaultAgent[];
+  /** The owner answers proposals and undoes agent commits. */
+  readonly owner: VaultAdmin;
   /** Tokens that a user removed. Every other token must survive. */
   readonly removed = new Set<Token>();
   readonly tokens = new Set<Token>();
@@ -134,6 +160,10 @@ class World {
     crashes: 0,
     conflictCopies: 0,
     agentWrites: 0,
+    agentProposals: 0,
+    ownerAccepts: 0,
+    ownerRejects: 0,
+    ownerUndos: 0,
     syncsStarted: 0,
     pullOnlySyncs: 0,
     stoppedSyncs: 0,
@@ -164,9 +194,34 @@ class World {
         rails: { maxFiles: 1000, minFiles: 1000, emptyVault: false },
         ...(name === 'phone' ? { maxFileSize } : {}),
       });
-      this.devices.push({ name, files, engine, maxFileSize, online: true });
+      // Presence writes happen during user actions, outside any task, so
+      // they use their own scheduler owner.
+      const presence = new PresenceWriter(this.#storage(`${name}-presence`), this.env, name);
+      this.devices.push({ name, files, engine, presence, maxFileSize, online: true });
     }
-    this.agent = new AgentWriter(this.#storage('agent'), this.env, { id: 'agent' });
+    // Limits high enough not to trip; the check runs on every commit.
+    const limits = { commitsPerHour: 1000, filesPerHour: 1000 };
+    this.agents = [
+      new VaultAgent({
+        storage: this.#storage('agent'),
+        env: this.env,
+        actor: { id: 'agent', run: 'sim' },
+        presence: { mode: 'wait', windowMs: 120_000, maxWaitMs: 300_000, pollMs: 60_000 },
+        limits,
+      }),
+      new VaultAgent({
+        storage: this.#storage('bot'),
+        env: this.env,
+        actor: { id: 'bot' },
+        presence: { mode: 'propose' },
+        limits,
+      }),
+    ];
+    this.owner = new VaultAdmin({
+      storage: this.#storage('owner'),
+      env: this.env,
+      actor: { kind: 'device', id: OWNER },
+    });
   }
 
   #storage(owner: string): Storage {
@@ -208,11 +263,81 @@ class World {
   }
 
   startAgent(): void {
-    if (this.scheduler.running('agent')) return;
+    const index = this.random.int(this.agents.length);
+    const owner = index === 0 ? 'agent' : 'bot';
+    if (this.scheduler.running(owner)) return;
+    const agent = this.agents[index] as VaultAgent;
+    const r = this.random;
     const line = `- ${this.token('g')}`;
-    this.scheduler.spawn('agent', async () => {
-      await this.agent.appendLine(DAILY, line);
-      this.stats.agentWrites++;
+    const roll = r.next();
+    const textPaths = PATHS.filter((path) => !path.endsWith('.png'));
+    let label: string;
+    let run: () => Promise<{ status: string }>;
+    if (roll < 0.4) {
+      label = `append section ${DAILY}`;
+      run = () => agent.appendToSection(DAILY, ['## Agent'], [line]);
+    } else if (roll < 0.55) {
+      const path = r.pick(textPaths) as string;
+      label = `append ${path}`;
+      run = () => agent.appendToSection(path, [], [line], { ifMissing: 'skip' });
+    } else if (roll < 0.8) {
+      const path = r.chance(0.7) ? DAILY : 'b.md';
+      const content = r.chance(0.5) ? line : `${line}\n- ${this.token('g')}`;
+      label = `block ${path}`;
+      run = () => agent.replaceBlock(path, 'w', content, { insert: { section: ['## Agent'] } });
+    } else if (roll < 0.9) {
+      const path = r.pick(textPaths) as string;
+      label = `create ${path}`;
+      run = () => agent.createIfAbsent(path, `${line}\n`);
+    } else {
+      const path = r.pick(textPaths) as string;
+      label = `propose ${path}`;
+      run = async () => {
+        const current = await agent.read(path);
+        const text = current?.text ?? '';
+        return agent.proposePatch(path, `${text}${line}\n`, {
+          ...(current === null ? {} : { baseRev: current.rev }),
+          rationale: 'sim',
+        });
+      };
+    }
+    this.scheduler.trace.push(`${owner} ${label}`);
+    this.scheduler.spawn(owner, async () => {
+      const result = await run();
+      if (result.status === 'committed') this.stats.agentWrites++;
+      if (result.status === 'proposed') this.stats.agentProposals++;
+    });
+  }
+
+  /** The owner accepts or rejects an open proposal, or undoes an agent commit. */
+  startOwner(): void {
+    if (this.scheduler.running('owner')) return;
+    const r = this.random;
+    const roll = r.next();
+    this.scheduler.spawn('owner', async () => {
+      if (roll < 0.6) {
+        const open = await this.owner.openProposals();
+        const proposal = r.pick(open);
+        if (proposal === undefined) return;
+        if (r.chance(0.8)) {
+          this.scheduler.trace.push(`owner accept ${proposal.id}`);
+          const result = await this.owner.accept(proposal.id);
+          if (result.status === 'accepted') this.stats.ownerAccepts++;
+        } else {
+          this.scheduler.trace.push(`owner reject ${proposal.id}`);
+          await this.owner.reject(proposal.id);
+          this.stats.ownerRejects++;
+        }
+        return;
+      }
+      const head = await this.owner.reader.head();
+      if (head.seq === 0) return;
+      const seq = 1 + r.int(head.seq);
+      const commit = await this.owner.reader.commit(seq);
+      if (commit.actor.kind !== 'agent') return;
+      this.scheduler.trace.push(`owner undo ${seq}`);
+      const result = await this.owner.undo(seq);
+      if (result.status === 'committed') this.stats.ownerUndos++;
     });
   }
 
@@ -234,6 +359,7 @@ class World {
       if (files.get(path) !== undefined) return;
       const content = path.endsWith('.png') ? `BIN ${this.token('b')}\n` : `- ${this.token('t')}\n`;
       await files.userWrite(path, encodeUtf8(content));
+      await this.#editing(device, path);
       this.scheduler.trace.push(`user ${device.name} create ${path}`);
       return;
     }
@@ -243,6 +369,7 @@ class World {
       .filter((line) => line !== '');
     const save = async (next: string[]): Promise<void> => {
       await files.userWrite(path, encodeUtf8(next.map((line) => `${line}\n`).join('')));
+      await this.#editing(device, path);
     };
     const forget = (line: string): void => {
       const token = /([a-z]\d+)$/.exec(line)?.[1];
@@ -298,6 +425,15 @@ class World {
         await save([...lines, `- ${this.token('t')}`]);
     }
     this.scheduler.trace.push(`user ${device.name} edit ${path}`);
+  }
+
+  /** Records that the device's user edits `path` now. Presence is advisory: failures are ignored. */
+  async #editing(device: Device, path: string): Promise<void> {
+    try {
+      await device.presence.write(path, this.env.now());
+    } catch (error) {
+      if (!isExpected(error)) throw error;
+    }
   }
 
   async deliverDelayed(): Promise<void> {
@@ -382,28 +518,61 @@ class World {
       opIds.add(commit.opId);
     }
 
-    // 3. No agent commit without a matching base: an agent only appends to the head.
+    // 3. Agents never remove a user's text, and the owner removes only
+    // agent text, or text that an accepted proposal removed. Tokens that
+    // agents committed must survive like user tokens, unless an agent
+    // replaced its own block or the owner removed them.
+    const acceptedProposals = new Map<number, { base: Set<string>; proposed: Set<string> }>();
+    const proposalList = await proposalIds(bucket, this.env);
+    for (const id of [...proposalList.open, ...proposalList.resolved]) {
+      const proposal = await readProposal(bucket, this.env, id);
+      if (proposal === null) throw new Error(`resolution of a missing proposal ${id}`);
+      const proposed = tokensOf(await content(proposal.hash));
+      const resolution = await readResolution(bucket, this.env, id);
+      if (resolution?.seq !== undefined) {
+        const base =
+          proposal.baseHash === null
+            ? new Set<string>()
+            : tokensOf(await content(proposal.baseHash));
+        acceptedProposals.set(resolution.seq, { base, proposed });
+      }
+    }
     const replay = new Manifest(vault.epoch);
     // Deletes each device sent: device, path key, and the content deleted.
     const deleted = new Set<string>();
+    const agentTokens = new Set<string>();
+    // Tokens that an agent's own block replace, an undo, or an accepted proposal removed.
+    const removedByAgents = new Set<string>();
     for (const commit of commits) {
       for (const op of commit.ops) {
-        if (op.type !== 'delete') continue;
         const before = replay.file(op.fileId);
-        if (before !== undefined)
+        if (op.type === 'delete' && before !== undefined)
           deleted.add(`${commit.actor.id}|${pathKey(op.path)}|${before.hash}`);
-      }
-      if (commit.actor.kind === 'agent') {
-        for (const op of commit.ops) {
-          if (op.type !== 'put') throw new Error('agent made a non-put op');
-          if (op.baseRev !== null) {
-            const before = replay.file(op.fileId);
-            if (before === undefined) throw new Error('agent edit of an unknown file');
-            const next = await content(op.hash);
-            if (!next.startsWith(await content(before.hash))) {
-              throw new Error(`agent commit ${commit.seq} did not keep the head content`);
-            }
+        if (op.type === 'move') continue;
+        const old =
+          before === undefined || before.deleted
+            ? new Set<string>()
+            : tokensOf(await content(before.hash));
+        const next = op.type === 'put' ? tokensOf(await content(op.hash)) : new Set<string>();
+        const gone = [...old].filter((token) => !next.has(token));
+        if (commit.actor.kind === 'agent') {
+          if (op.type !== 'put') throw new Error(`agent commit ${commit.seq} has a ${op.type} op`);
+          for (const token of next) if (token.startsWith('g')) agentTokens.add(token);
+          const userGone = gone.filter((token) => !token.startsWith('g'));
+          if (userGone.length > 0)
+            throw new Error(`agent commit ${commit.seq} removed user text ${userGone.join(' ')}`);
+          for (const token of gone) removedByAgents.add(token);
+        } else if (commit.actor.id === OWNER) {
+          const accepted = acceptedProposals.get(commit.seq);
+          for (const token of gone) {
+            const allowed =
+              accepted === undefined
+                ? token.startsWith('g')
+                : accepted.base.has(token) && !accepted.proposed.has(token);
+            if (!allowed) throw new Error(`owner commit ${commit.seq} removed ${token}`);
+            removedByAgents.add(token);
           }
+          for (const token of next) if (token.startsWith('g')) agentTokens.add(token);
         }
       }
       replay.apply(commit);
@@ -440,14 +609,51 @@ class World {
       }
     }
 
-    // 5. No silent loss: every token that no user removed is in a live file.
-    const live = [...head.values()].join('\n');
-    const present = new Set(live.match(/[a-z]\d+/g) ?? []);
+    // 5. No silent loss: every user token, and every committed agent
+    // token, is in a live file, unless a user removed it, or an agent's
+    // block replace, an undo, or an accepted proposal removed it (checked
+    // in 3).
+    const present = tokensOf([...head.values()].join('\n'));
     for (const token of this.tokens) {
-      if (!this.removed.has(token) && !present.has(token))
-        throw new Error(`token ${token} was lost`);
+      if (token.startsWith('g')) continue;
+      // An accepted proposal may remove user text: the owner chose that.
+      if (!this.removed.has(token) && !removedByAgents.has(token) && !present.has(token))
+        throw new Error(`token ${token} was lost${await lastSeen(commits, token, content)}`);
+    }
+    for (const token of agentTokens) {
+      if (!this.removed.has(token) && !removedByAgents.has(token) && !present.has(token))
+        throw new Error(`agent token ${token} was lost${await lastSeen(commits, token, content)}`);
     }
   }
+}
+
+/**
+ * For a failure message: the last commit whose files held `token`, and the
+ * next commit that changed one of those files.
+ */
+async function lastSeen(
+  commits: readonly Commit[],
+  token: string,
+  content: (hash: ContentHash) => Promise<string>,
+): Promise<string> {
+  const manifest = new Manifest(commits[0]?.epoch ?? 1);
+  let holders: string[] = [];
+  let last = '';
+  for (const commit of commits) {
+    manifest.apply(commit);
+    const now: string[] = [];
+    for (const [fileId, entry] of manifest.liveFiles()) {
+      if (tokensOf(await content(entry.hash)).has(token)) now.push(fileId);
+    }
+    if (now.length > 0) {
+      holders = now;
+      last = `; last held at seq ${commit.seq}`;
+    } else if (holders.length > 0) {
+      const op = commit.ops.find((o) => holders.includes(o.fileId));
+      return `${last}; removed by seq ${commit.seq} (${commit.actor.kind} ${commit.actor.id}, ${op?.type ?? '?'} ${op === undefined ? '' : op.type === 'move' ? op.to : op.path})`;
+    }
+  }
+  return last === '' ? '; never committed' : `${last}; still held at the end of the log`;
 }
 
 /** Runs one seed and checks the invariants. */
@@ -463,7 +669,8 @@ export async function simulate(options: SimOptions): Promise<SimResult> {
       if (roll < 0.62) await world.scheduler.step();
       else if (roll < 0.8) await world.userAction(device);
       else if (roll < 0.9) world.startSync(device);
-      else if (roll < 0.94) world.startAgent();
+      else if (roll < 0.935) world.startAgent();
+      else if (roll < 0.94) world.startOwner();
       else if (roll < 0.946) world.crash(device);
       else if (roll < 0.97) {
         device.online = !device.online;
@@ -471,7 +678,7 @@ export async function simulate(options: SimOptions): Promise<SimResult> {
       } else if (roll < 0.985) await world.deliverDelayed();
       else world.env.advance(60_000 * (1 + r.int(30)));
       await world.scheduler.settle();
-      for (const owner of ['mac', 'phone', 'agent']) {
+      for (const owner of ['mac', 'phone', 'agent', 'bot', 'owner']) {
         const error = world.scheduler.takeError(owner);
         if (error !== undefined) world.stats.syncErrors++;
         if (error instanceof Error && error.name === 'SyncStopped') world.stats.stoppedSyncs++;

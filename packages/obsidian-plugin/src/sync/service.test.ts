@@ -1,3 +1,4 @@
+import { VaultAgent, readPresence } from '@obsy/agent';
 import { SeededEnvironment } from '@obsy/core';
 import { MemoryStorage } from '@obsy/storage-testkit/portable';
 import { IDBFactory } from 'fake-indexeddb';
@@ -275,5 +276,68 @@ describe('SyncService pairing and stops', () => {
     phone.host.stopRequested = () => false;
     await phone.service.run();
     expect(phone.vault.paths()).toHaveLength(4);
+  });
+});
+
+describe('SyncService and agents', () => {
+  async function connected(): Promise<{ mac: Device; phone: Device; storage: MemoryStorage }> {
+    const devices = await twoDevices();
+    devices.mac.vault.userWrite('daily.md', '# Day\n## Log\n- a\n# Other\n## Log\n');
+    devices.mac.host.answers.push(true);
+    await devices.mac.service.connect();
+    return devices;
+  }
+
+  it('writes presence while the user types, at most every 30 s, only in full mode', async () => {
+    const { mac, phone, storage } = await connected();
+    const env = mac.host.env as SeededEnvironment;
+    mac.service.editing('daily.md');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const records = async () => readPresence(storage, env);
+    expect((await records()).map((p) => [p.device, p.path])).toEqual([['mac', 'daily.md']]);
+    const first = (await records())[0]?.time;
+    env.advance(10_000);
+    mac.service.editing('daily.md');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await records())[0]?.time).toBe(first);
+    env.advance(30_000);
+    mac.service.editing('daily.md');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await records())[0]?.time).not.toBe(first);
+    // The phone joins pull-only and writes nothing.
+    await phone.service.connect();
+    phone.service.editing('daily.md');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await records()).toHaveLength(1);
+  });
+
+  it('counts proposals, tells about new ones, and accepts and rejects them', async () => {
+    const { mac, storage } = await connected();
+    const agent = new VaultAgent({ storage, env: mac.host.env, actor: { id: 'planner' } });
+    const first = await agent.appendToSection('daily.md', ['Log'], ['- agent']);
+    const second = await agent.proposePatch('new.md', 'fresh\n', { rationale: 'why' });
+    if (first.status !== 'proposed' || second.status !== 'proposed')
+      throw new Error('expected proposals');
+    await mac.service.run({ manual: true });
+    expect(mac.service.status.proposals).toBe(2);
+    // Accepting syncs even while automatic sync is paused.
+    mac.service.setAutoSync(false);
+    expect(mac.host.notices.some((n) => n.includes('2 agent proposals to review'))).toBe(true);
+    // The user edits the note before accepting: the proposal merges with it.
+    mac.vault.userWrite('daily.md', '# Day\n## Log\n- a\n- mine\n# Other\n## Log\n');
+    const details = await mac.service.proposals();
+    expect(details.map((d) => d.proposal.path).sort()).toEqual(['daily.md', 'new.md']);
+    expect(await mac.service.acceptProposal(first.proposalId)).toMatchObject({
+      status: 'accepted',
+      merged: true,
+    });
+    expect(mac.vault.text('daily.md')).toBe(
+      '# Day\n## Log\n- a\n- mine\n# Other\n## Log\n- agent\n',
+    );
+    expect(mac.service.status.proposals).toBe(1);
+    expect((await mac.service.rejectProposal(second.proposalId)).outcome).toBe('rejected');
+    expect(mac.vault.text('new.md')).toBeUndefined();
+    expect(await mac.service.proposals()).toEqual([]);
+    expect(mac.service.status.proposals).toBe(0);
   });
 });

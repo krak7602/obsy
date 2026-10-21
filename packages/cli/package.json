@@ -1,0 +1,29 @@
+{
+  "name": "@obsy/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The obsy command: agent edits, proposals, undo, status, verify, and export from a terminal",
+  "license": "MIT",
+  "bin": {
+    "obsy": "./dist/obsy.mjs"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "@obsy/agent": "workspace:*",
+    "@obsy/core": "workspace:*",
+    "@obsy/protocol": "workspace:*",
+    "@obsy/storage-s3": "workspace:*"
+  },
+  "devDependencies": {
+    "@obsy/storage-testkit": "workspace:*",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
