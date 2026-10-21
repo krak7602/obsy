@@ -37,8 +37,13 @@ if [ "$PUBLISH" != "--publish" ]; then
   echo "Not published. To publish: $0 $VERSION --publish"
   exit 0
 fi
+# Resolve the repository before tagging, so that a failure leaves no tag behind.
+REPO=$(cd "$ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)
+NOTES="Beta for BRAT: install with BRAT -> Add beta plugin -> $REPO.
+
+obsy is early software. Try it on a copy of a vault, with a bucket that holds nothing else, and never on a vault that another sync service also syncs. See README.md and docs/runbooks/plugin-release.md."
 git -C "$ROOT" tag "$VERSION"
 git -C "$ROOT" push origin "$VERSION"
-gh release create "$VERSION" --repo "$(git -C "$ROOT" remote get-url origin)" --prerelease \
-  --title "$VERSION" --notes "Beta for BRAT. See docs/runbooks/plugin-release.md." \
+gh release create "$VERSION" --repo "$REPO" --prerelease \
+  --title "$VERSION" --notes "$NOTES" \
   "$OUT/main.js" "$OUT/manifest.json" "$OUT/styles.css"
