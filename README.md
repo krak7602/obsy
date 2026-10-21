@@ -70,4 +70,4 @@ To set up and run the checks, see the [development runbook](docs/runbooks/develo
 
 ## Licensing
 
-MIT ([LICENSE](LICENSE)). Ideas come from public documentation and permissively licensed projects only. Remotely Save's current sync engine (PolyForm Strict) and GPL code are not copied. [Clean-room licensing](docs/concepts/clean-room-licensing.md) lists what may be reused and under which notices.
+MIT ([LICENSE](LICENSE)). Bundled third-party code is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [Clean-room licensing](docs/concepts/clean-room-licensing.md) says what other code may be reused, and how.
