@@ -1,8 +1,12 @@
-import { RemoteVault, type Environment } from '@obsy/core';
+import { RemoteVault, withRetry, type Environment } from '@obsy/core';
 import {
+  CHECKPOINT_PREFIX,
   Manifest,
   ProtocolError,
+  checkpointKey,
+  decodeCheckpoint,
   decodeUtf8Strict,
+  parseCheckpointKey,
   type Actor,
   type Commit,
   type ContentHash,
@@ -85,6 +89,41 @@ export class VaultReader {
     this.#vault = vault;
     for (const commit of await this.remote.catchUp(this.#manifest)) this.#remember(commit);
     return this.#manifest;
+  }
+
+  /**
+   * The manifest as of `seq`: the newest checkpoint at or before it, then
+   * the log up to it. A new object; callers may change it.
+   */
+  async manifestAt(seq: number): Promise<Manifest> {
+    const head = await this.head();
+    if (!Number.isSafeInteger(seq) || seq < 0 || seq > head.seq)
+      throw new ProtocolError(`No state at seq ${seq}; the head is at ${head.seq}.`);
+    if (seq === head.seq) return head.clone();
+    let best: number | null = null;
+    let startAfter: string | undefined;
+    for (;;) {
+      const after = startAfter;
+      const page = await withRetry(this.env, () =>
+        this.storage.list(CHECKPOINT_PREFIX, after, 1000),
+      );
+      for (const key of page.keys) {
+        const at = parseCheckpointKey(key);
+        if (at !== null && at <= seq && (best === null || at > best)) best = at;
+      }
+      if (!page.truncated || page.keys.length === 0) break;
+      startAfter = page.keys.at(-1);
+    }
+    let manifest = new Manifest(head.epoch);
+    if (best !== null) {
+      const key = checkpointKey(best);
+      const object = await withRetry(this.env, () => this.storage.get(key));
+      const checkpoint = object === null ? null : decodeCheckpoint(object.body, best);
+      if (checkpoint !== null && checkpoint.epoch === head.epoch)
+        manifest = Manifest.fromCheckpoint(checkpoint);
+    }
+    while (manifest.seq < seq) manifest.apply(await this.commit(manifest.seq + 1));
+    return manifest;
   }
 
   /** Records a commit that the caller claimed and applied to the head. */

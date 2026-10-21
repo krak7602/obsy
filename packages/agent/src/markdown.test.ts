@@ -203,3 +203,20 @@ describe('blocks', () => {
     );
   });
 });
+
+describe('lineDiff', () => {
+  it('shows changes with context and folds unchanged runs', async () => {
+    const { lineDiff } = await import('./diff');
+    const before = Array.from({ length: 10 }, (_, i) => `l${i}`).join('\n');
+    const after = before.replace('l5', 'l5!');
+    expect(lineDiff(before, after, 1)).toEqual([
+      { kind: '…', text: '4 unchanged lines' },
+      { kind: '=', text: 'l4' },
+      { kind: '-', text: 'l5' },
+      { kind: '+', text: 'l5!' },
+      { kind: '=', text: 'l6' },
+      { kind: '…', text: '3 unchanged lines' },
+    ]);
+    expect(lineDiff('', 'a\n')).toEqual([{ kind: '+', text: 'a' }]);
+  });
+});

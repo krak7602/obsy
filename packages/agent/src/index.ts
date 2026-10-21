@@ -45,3 +45,4 @@ export {
   type Lines,
   type SectionLookup,
 } from './markdown';
+export { lineDiff, type DiffLine } from './diff';

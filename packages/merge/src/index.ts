@@ -15,6 +15,8 @@ export type {
 } from './merge';
 export type { FrontmatterConflictReason } from './frontmatter';
 export type { LineRange } from './lines';
+/** A minimal line diff, for showing changes. */
+export { diffLines, type Hunk } from './diff';
 /** Low-level three-way line comparison, without obsy's Markdown rules. Tests use it as a baseline. */
 export { diff3Regions } from './diff3';
 export type { Diff3Region, Span } from './diff3';
