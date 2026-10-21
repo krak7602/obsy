@@ -8,7 +8,7 @@ If private reporting is unavailable, open a public issue with only a redacted de
 
 ## Supported code
 
-Security fixes target the current `main` branch. obsy has no released versions yet.
+Security fixes target the current `main` branch. The only release is the plugin beta 0.1.0; fixes ship as new beta releases.
 
 ## Trust model
 

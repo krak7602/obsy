@@ -2,7 +2,7 @@
 
 Sync an Obsidian vault through storage you own, and let scripts and AI agents edit the same notes safely.
 
-Status: design accepted; phases 1 to 4 built. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) passed a test on an iPhone. The agent SDK and the `obsy` command (phase 4) passed the simulator and a test next to a person typing in Obsidian. Nothing is released.
+Status: design accepted; phases 1 to 4 built. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) passed a test on an iPhone. The agent SDK and the `obsy` command (phase 4) passed the simulator and a test next to a person typing in Obsidian. The plugin's first beta, 0.1.0, is a GitHub pre-release that [BRAT](https://github.com/TfTHacker/obsidian42-brat) can install. Nothing else is released.
 
 ## What it is
 
@@ -32,14 +32,14 @@ Version 1 is not end-to-end encrypted: whoever controls the bucket can read the 
 
 ## Try it
 
-obsy is early software with no release yet. Try it only on a **copy** of a vault, with a bucket that holds nothing else, and never on a vault that another sync service (Obsidian Sync, iCloud, Syncthing, and so on) also syncs.
+obsy is early software; its only release is a beta. Try it only on a **copy** of a vault, with a bucket that holds nothing else, and never on a vault that another sync service (Obsidian Sync, iCloud, Syncthing, and so on) also syncs.
 
 ```sh
 mise install && pnpm install   # Node 24 and pnpm 12, from mise.toml
 pnpm run build                 # the plugin, the obsy command, and the libraries
 ```
 
-- **Obsidian plugin.** Copy `packages/obsidian-plugin/dist/main.js`, `packages/obsidian-plugin/dist/styles.css`, and the root `manifest.json` into `<vault>/.obsidian/plugins/obsy/`, then turn on **Obsy - Sync Vaults** in **Settings → Community plugins**. Its settings take an S3 endpoint, a bucket, a vault prefix, and a credential kept in Obsidian's secret storage. Other devices join with a pairing code or QR code. Details: [Obsidian plugin](docs/subsystems/obsidian-plugin.md) and [iPhone sync test](docs/runbooks/iphone-sync-test.md).
+- **Obsidian plugin.** With BRAT: **Add beta plugin**, then this repository. Or copy `packages/obsidian-plugin/dist/main.js`, `packages/obsidian-plugin/dist/styles.css`, and the root `manifest.json` into `<vault>/.obsidian/plugins/obsy/`, then turn on **Obsy - Sync Vaults** in **Settings → Community plugins**. Its settings take an S3 endpoint, a bucket, a vault prefix, and a credential kept in Obsidian's secret storage. Other devices join with a pairing code or QR code. Details: [Obsidian plugin](docs/subsystems/obsidian-plugin.md) and [iPhone sync test](docs/runbooks/iphone-sync-test.md).
 - **`obsy` command.** `node packages/cli/dist/obsy.mjs --help`. Keys come from `OBSY_S3_*` variables. See the [CLI runbook](docs/runbooks/cli.md).
 - **Checks.** `pnpm run check`, `pnpm test`, and `pnpm run build` ([development runbook](docs/runbooks/development.md)).
 

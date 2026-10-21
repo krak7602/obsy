@@ -1,6 +1,6 @@
 # Working in this repository
 
-obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 nearly done (iPhone test passed; BRAT release pending); phase 4 built (agent SDK and CLI; moving an existing agent onto it is pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/agent` (agent SDK), `@obsy/cli` (`obsy` command), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (not released) exist.
+obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 done (iPhone test passed; beta 0.1.0 released for BRAT); phase 4 built (agent SDK and CLI; moving an existing agent onto it is pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/agent` (agent SDK), `@obsy/cli` (`obsy` command), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (beta 0.1.0 through BRAT) exist.
 
 ## Hard rules
 

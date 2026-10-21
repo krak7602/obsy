@@ -8,7 +8,7 @@ updated: 2026-10-21
 
 ## Current
 
-Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop, in the simulator, and in one iPhone run ([results](../learning/mobile-sync-phase3.md)). Presence and the review of agent proposals (phase 4) are tested on desktop ([results](../learning/agent-sdk-phase4.md)). Version 0.1.0 is not released. On iOS the status bar is hidden, so the phone shows no sync activity outside the settings. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
+Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop, in the simulator, and in one iPhone run ([results](../learning/mobile-sync-phase3.md)). Presence and the review of agent proposals (phase 4) are tested on desktop ([results](../learning/agent-sdk-phase4.md)). Version 0.1.0 is a beta: a GitHub pre-release that BRAT installs. It is not in the community directory. On iOS the status bar is hidden, so the phone shows no sync activity outside the settings. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
 
 The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [relay](relay.md) as a later option. It owns the Obsidian-specific parts: reading and writing vault files safely, durable state, the lifecycle, settings, and the questions that the safety rails ask.
 
@@ -134,9 +134,11 @@ Existing behavior. In full mode only:
 
 Existing behavior: `packages/obsidian-plugin/` builds `dist/main.js` (CommonJS) with Rolldown. A second entry builds the platform probe, a separate plugin with the ID `obsy-probe`, into `dist/obsy-probe/` ([platform probe](../runbooks/platform-probe.md)). The probe is installed by hand in scratch vaults and is never released.
 
-The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases. `pnpm --filter @obsy/obsidian-plugin run release <version>` prepares the release files and publishes only with `--publish` ([release runbook](../runbooks/plugin-release.md)). The repository is public on GitHub; no release exists yet.
+The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases. `pnpm --filter @obsy/obsidian-plugin run release <version>` prepares the release files and publishes only with `--publish` ([release runbook](../runbooks/plugin-release.md)). The repository is public on GitHub, and 0.1.0 is its first pre-release.
 
 ## History
+
+- 2026-10-21: Beta 0.1.0 released through BRAT.
 
 - 2026-10-21: Syncs stop while the vault folder has symbolic links.
 
