@@ -47,6 +47,18 @@ From the repository root:
 
 Options: `--start <n>` (first seed, default 1), `--workers <n>` (default: CPU count), `--steps <n>` (default 600). The runner prints progress every 10 s, then totals and the first 20 failing seeds, and exits with code 1 if any seed failed. Rebuild after changing `@obsy/core`, `@obsy/protocol`, `@obsy/merge`, or the simulator.
 
+### How many seeds to run
+
+Each seed is one random history; a bug shows only when its rare events line up. One engine bug in phase 3 failed about 1 seed in 245,000 ([seed 28784](../learning/mobile-sync-phase3.md#findings)), so short runs can miss real bugs. Long runs cost only local CPU time: about 25,000 to 30,000 seeds per minute on 10 to 12 cores, so a million seeds takes 35 to 40 minutes.
+
+| Change | Run |
+| --- | --- |
+| Plugin, documentation, or tests only; nothing in `@obsy/core`, `@obsy/protocol`, `@obsy/merge`, or the simulator | `pnpm test` (400 seeds) |
+| While you work on the engine, the protocol, the merge, or the simulator | 20,000 to 50,000 seeds after each change (one to two minutes) |
+| Before you call a phase or a change to the commit path done | 1,000,000 seeds on the final code, recorded on the phase's learning page |
+
+When a run finds a failing seed, replay it with `--seed <n> --trace`, fix the cause, add the seed to the regression seeds in `sim.test.ts` if it found a bug, and start the long run again on the fixed code.
+
 ### Check that the checker works
 
 After a change to the simulator, plant a bug and confirm that seeds fail. Examples that must fail: skip writing the conflict copy in `#mergeContent`; let a remote delete remove a locally edited file; treat a lost claim as won in `RemoteVault.claim`; write the head content instead of the merge result; for the size limit, skip the yield of a local file at the path of a skipped head file in `#applyRemoteCreates`.
