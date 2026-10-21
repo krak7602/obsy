@@ -24,4 +24,3 @@ export {
 export { verifyLocal, type VerifyProblem, type VerifyReport } from './verify';
 export { initVault, webEnvironment } from './vault';
 export { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
-export { AgentWriter, type AgentResult } from './agent';

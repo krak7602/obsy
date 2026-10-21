@@ -15,6 +15,7 @@
     "sim": "node dist/cli.mjs"
   },
   "dependencies": {
+    "@obsy/agent": "workspace:*",
     "@obsy/core": "workspace:*",
     "@obsy/protocol": "workspace:*",
     "@obsy/storage-testkit": "workspace:*"

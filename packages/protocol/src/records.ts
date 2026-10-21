@@ -365,8 +365,176 @@ export function validateCheckpoint(input: unknown, expectedSeq?: number): Checkp
   return c as unknown as Checkpoint;
 }
 
+// ---------------------------------------------------------------- agent records
+
+const PROPOSAL_ID = /^p_[a-z2-7]{24}$/;
+const OPERATION = /^[A-Za-z][A-Za-z0-9-]{0,63}$/;
+
+/** The longest proposal rationale, in UTF-16 code units. */
+export const MAX_RATIONALE_LENGTH = 4000;
+
+export function isProposalId(value: unknown): value is string {
+  return typeof value === 'string' && PROPOSAL_ID.test(value);
+}
+
+/** Why an agent edit was stored as a proposal instead of committed. */
+export type ProposalReason =
+  /** The agent asked for a proposal (`proposePatch`). */
+  | 'requested'
+  /** The heading or block the edit needs is missing. */
+  | 'anchor-missing'
+  /** The heading or block the edit needs is there more than once, or is damaged. */
+  | 'anchor-ambiguous'
+  /** A person edited the agent's block, so the block is theirs now. */
+  | 'block-edited'
+  /** Someone other than the agent changed the file. */
+  | 'not-owned'
+  /** A device was editing the note. */
+  | 'editing';
+
+const PROPOSAL_REASONS: readonly ProposalReason[] = [
+  'requested',
+  'anchor-missing',
+  'anchor-ambiguous',
+  'block-edited',
+  'not-owned',
+  'editing',
+];
+
+/**
+ * `proposals/<id>.json`: a change that an agent could not commit safely.
+ * It holds the whole proposed content as a blob, and the revision it was
+ * made against, so that accepting it is a three-way merge with the head.
+ */
+export interface Proposal {
+  readonly format: 1;
+  readonly id: string;
+  readonly createdAt: string;
+  readonly actor: Actor;
+  readonly path: string;
+  /** The file it changes, or null for a new file. */
+  readonly fileId: string | null;
+  /** The file's revision that the content was computed from; null for a new file. */
+  readonly baseRev: number | null;
+  /** The file's content at `baseRev`; null for a new file. */
+  readonly baseHash: ContentHash | null;
+  /** The proposed content. */
+  readonly hash: ContentHash;
+  readonly size: number;
+  readonly reason: ProposalReason;
+  /** The operation that made it, for example `appendToSection`. */
+  readonly operation: string;
+  readonly rationale: string;
+}
+
+/** `resolutions/<id>.json`: the owner's answer to proposal `<id>`. Created once. */
+export interface Resolution {
+  readonly format: 1;
+  readonly id: string;
+  readonly resolvedAt: string;
+  readonly actor: Actor;
+  readonly outcome: 'accepted' | 'rejected';
+  /** The commit that applied an accepted proposal. Absent when the head already had its content. */
+  readonly seq?: number;
+}
+
+/** `presence/<device>.json`: what a device's user edits now. Overwritten by that device only. */
+export interface Presence {
+  readonly format: 1;
+  readonly device: string;
+  /** When the user last edited `path`. */
+  readonly time: string;
+  /** The note being edited, or null when none. */
+  readonly path: string | null;
+}
+
+export function validateProposal(input: unknown, expectedId?: string): Proposal {
+  const what = expectedId === undefined ? 'proposal' : `proposal ${expectedId}`;
+  const p = object(input, what);
+  onlyKeys(p, what, [
+    'format',
+    'id',
+    'createdAt',
+    'actor',
+    'path',
+    'fileId',
+    'baseRev',
+    'baseHash',
+    'hash',
+    'size',
+    'reason',
+    'operation',
+    'rationale',
+  ]);
+  format(p, what);
+  check(isProposalId(p['id']), what, 'bad id');
+  if (expectedId !== undefined) check(p['id'] === expectedId, what, 'id differs from its key');
+  time(p['createdAt'], what);
+  validateActor(p['actor'], what);
+  check(isVaultPath(p['path']), what, 'bad path');
+  const isNew = p['fileId'] === null;
+  check(isNew || isFileId(p['fileId']), what, 'bad fileId');
+  check(isNew ? p['baseRev'] === null : isRev(p['baseRev']), what, 'bad baseRev');
+  check(isNew ? p['baseHash'] === null : isContentHash(p['baseHash']), what, 'bad baseHash');
+  check(isContentHash(p['hash']), what, 'bad hash');
+  check(isSize(p['size']), what, 'bad size');
+  check(PROPOSAL_REASONS.includes(p['reason'] as ProposalReason), what, 'bad reason');
+  check(
+    typeof p['operation'] === 'string' && OPERATION.test(p['operation']),
+    what,
+    'bad operation',
+  );
+  check(
+    typeof p['rationale'] === 'string' && p['rationale'].length <= MAX_RATIONALE_LENGTH,
+    what,
+    'bad rationale',
+  );
+  return p as unknown as Proposal;
+}
+
+export function validateResolution(input: unknown, expectedId?: string): Resolution {
+  const what = expectedId === undefined ? 'resolution' : `resolution ${expectedId}`;
+  const r = object(input, what);
+  onlyKeys(r, what, ['format', 'id', 'resolvedAt', 'actor', 'outcome'], ['seq']);
+  format(r, what);
+  check(isProposalId(r['id']), what, 'bad id');
+  if (expectedId !== undefined) check(r['id'] === expectedId, what, 'id differs from its key');
+  time(r['resolvedAt'], what);
+  validateActor(r['actor'], what);
+  check(r['outcome'] === 'accepted' || r['outcome'] === 'rejected', what, 'bad outcome');
+  if ('seq' in r) check(r['outcome'] === 'accepted' && isRev(r['seq']), what, 'bad seq');
+  return r as unknown as Resolution;
+}
+
+export function validatePresence(input: unknown, expectedDevice?: string): Presence {
+  const what = expectedDevice === undefined ? 'presence' : `presence ${expectedDevice}`;
+  const p = object(input, what);
+  onlyKeys(p, what, ['format', 'device', 'time', 'path']);
+  format(p, what);
+  check(isActorId(p['device']), what, 'bad device');
+  if (expectedDevice !== undefined)
+    check(p['device'] === expectedDevice, what, 'device differs from its key');
+  time(p['time'], what);
+  check(p['path'] === null || isVaultPath(p['path']), what, 'bad path');
+  return p as unknown as Presence;
+}
+
+export function decodeProposal(bytes: Uint8Array, expectedId?: string): Proposal {
+  return validateProposal(parseJson(bytes, 'proposal'), expectedId);
+}
+
+export function decodeResolution(bytes: Uint8Array, expectedId?: string): Resolution {
+  return validateResolution(parseJson(bytes, 'resolution'), expectedId);
+}
+
+export function decodePresence(bytes: Uint8Array, expectedDevice?: string): Presence {
+  return validatePresence(parseJson(bytes, 'presence'), expectedDevice);
+}
+
 /** Encodes a record as UTF-8 JSON. */
-export function encodeRecord(record: VaultRecord | Commit | Checkpoint): Uint8Array {
+export function encodeRecord(
+  record: VaultRecord | Commit | Checkpoint | Proposal | Resolution | Presence,
+): Uint8Array {
   return encodeUtf8(JSON.stringify(record));
 }
 
