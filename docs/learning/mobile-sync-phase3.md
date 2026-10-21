@@ -25,7 +25,18 @@ Phase 3 on the [roadmap](../roadmap.md) is done when offline phone edits, app ki
 
 #### Simulator
 
-To be filled in from the million-seed run.
+`node packages/simulator/dist/cli.mjs --seeds 1000000 --workers 8` on the final engine: seeds 1 to 1,000,000, 0 failures, 2,342 s.
+
+| Total over all seeds | Count |
+| --- | --- |
+| Syncs started / pull-only / stopped at a safe point / finished | 6,577,361 / 1,315,580 / 464,172 / 3,609,449 |
+| Device crashes | 2,475,870 |
+| Device commits during the run / in the quiet phase | 3,949,085 / 682,554 |
+| Conflict copies | 2,466,044 |
+| Head files the phone left out by its size limit (summed over finished syncs) | 262,611 |
+| Syncs that ended with an unexpected error | 0 (all 464,172 errors were stops) |
+
+Seeds 110 and 28784 joined the regression seeds in `pnpm test`.
 
 #### Mutation check
 
