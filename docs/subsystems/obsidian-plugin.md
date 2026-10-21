@@ -85,6 +85,10 @@ Existing behavior. **Verify** (command and settings) saves open notes, reads the
 
 Accepted design, not implemented: syncing the config folder, opt-in by category, never `workspace*.json` or obsy's own data. Today obsy syncs no file in the config folder.
 
+### Symbolic links
+
+Existing behavior. obsy does not sync through symbolic links ([decision](../decisions/2026-10-21-no-symbolic-links.md)). Before each sync on desktop, the plugin walks the vault folder without following links, skipping dot names, and lists every symbolic link to a file or folder. If there is one, the sync stops before it reads or sends anything: the status says which links, and a notice says so once for each set of links (and on every manual sync). Removing the links, or moving them out of the vault, lets the next sync go on. Users cannot make links in an app's folder on iOS and Android, so mobile does not check.
+
 ### Large files
 
 Existing behavior:
@@ -133,6 +137,8 @@ Existing behavior: `packages/obsidian-plugin/` builds `dist/main.js` (CommonJS) 
 The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases. `pnpm --filter @obsy/obsidian-plugin run release <version>` prepares the release files and publishes only with `--publish` ([release runbook](../runbooks/plugin-release.md)). No release exists yet, and the repository has no GitHub remote.
 
 ## History
+
+- 2026-10-21: Syncs stop while the vault folder has symbolic links.
 
 - 2026-10-21: Presence while typing, the proposal count, and the review dialog added (phase 4).
 - 2026-10-21: Mobile parts implemented (phase 3): stop when hidden, the download size limit, chunked writes, pairing codes; a release script.

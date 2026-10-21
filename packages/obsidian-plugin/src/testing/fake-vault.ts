@@ -50,6 +50,12 @@ export class FakeVault implements VaultPort {
    * Other writes are treated as atomic.
    */
   before: (call: string, path: string) => void = () => undefined;
+  /** Paths that `symlinks` reports. */
+  links: string[] = [];
+
+  symlinks(): Promise<string[]> {
+    return Promise.resolve([...this.links]);
+  }
 
   #tick(): number {
     this.#clock += 1;

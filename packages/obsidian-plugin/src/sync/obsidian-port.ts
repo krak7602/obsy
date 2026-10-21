@@ -1,8 +1,26 @@
-import { MarkdownView, TFile, TFolder, normalizePath } from 'obsidian';
+import { FileSystemAdapter, MarkdownView, TFile, TFolder, normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
 
 import { toArrayBuffer } from '../transport/request-url-fetch';
 import type { EditorPort, VaultFileInfo, VaultPort } from './vault-port';
+
+/** The parts of Node's `fs` that `symlinks` uses. Desktop only. */
+interface DirEntry {
+  readonly name: string;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
+}
+interface NodeFs {
+  readonly promises: {
+    readdir(path: string, options: { withFileTypes: true }): Promise<DirEntry[]>;
+  };
+}
+
+/** Node's `fs` on desktop, through Electron's `require`; null elsewhere. */
+function nodeFs(): NodeFs | null {
+  const load = (window as unknown as { require?: (id: string) => unknown }).require;
+  return typeof load === 'function' ? (load('fs') as NodeFs) : null;
+}
 
 /** `VaultPort` on the Obsidian vault and workspace. */
 export class ObsidianVaultPort implements VaultPort {
@@ -112,6 +130,27 @@ export class ObsidianVaultPort implements VaultPort {
       };
     }
     return null;
+  }
+
+  async symlinks(): Promise<string[]> {
+    const adapter = this.app.vault.adapter;
+    const fs = nodeFs();
+    // On iOS and Android the adapter is not a FileSystemAdapter, and users
+    // cannot make symbolic links in an app's folder.
+    if (!(adapter instanceof FileSystemAdapter) || fs === null) return [];
+    const root = adapter.getBasePath();
+    const found: string[] = [];
+    const walk = async (dir: string, prefix: string): Promise<void> => {
+      for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
+        // Obsidian does not index dot names, and the config folder is one.
+        if (entry.name.startsWith('.')) continue;
+        const path = `${prefix}${entry.name}`;
+        if (entry.isSymbolicLink()) found.push(path);
+        else if (entry.isDirectory()) await walk(`${dir}/${entry.name}`, `${path}/`);
+      }
+    };
+    await walk(root, '');
+    return found.sort();
   }
 
   /** Saves every open note, so that the sync sees what the user typed. */

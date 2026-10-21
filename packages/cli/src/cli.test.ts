@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -154,6 +154,9 @@ describe('obsy CLI', () => {
     await writeFile(join(dir, '.hidden'), 'not synced');
     expect(await obsy(['verify', dir])).toBe(0);
     expect(out.stdout).toContain('no differences');
+    await symlink(await tempDir(), join(dir, 'linked'));
+    expect(await obsy(['verify', dir])).toBe(1);
+    expect(out.stderr).toContain('symbolic links, which obsy does not sync: linked');
   });
 
   it('reads variables from --env-file, and the environment wins', async () => {

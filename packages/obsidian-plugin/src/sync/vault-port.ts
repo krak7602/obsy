@@ -38,4 +38,9 @@ export interface VaultPort {
   trash(path: string): Promise<void>;
   /** The editor of the note when it is open in source or live preview mode, else null. */
   editor(path: string): EditorPort | null;
+  /**
+   * Vault paths of symbolic links in the vault folder, outside dot folders,
+   * without following them. Empty where links cannot be read (mobile).
+   */
+  symlinks(): Promise<string[]>;
 }

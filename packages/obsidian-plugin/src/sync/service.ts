@@ -91,6 +91,17 @@ export interface ServiceHost {
 }
 
 /** The device state names another vault than the folder's marker. */
+/** The vault folder has symbolic links: obsy does not sync through them. */
+class SymlinksFound extends Error {
+  constructor(readonly paths: readonly string[]) {
+    const shown =
+      paths.slice(0, 3).join(', ') + (paths.length > 3 ? `, and ${paths.length - 3} more` : '');
+    super(
+      `The vault has ${paths.length === 1 ? 'a symbolic link' : `${paths.length} symbolic links`} (${shown}). Obsy does not sync through symbolic links: move ${paths.length === 1 ? 'it' : 'them'} out of the vault, then sync again`,
+    );
+  }
+}
+
 class MarkerMismatch extends Error {
   constructor(
     readonly stateVaultId: string,
@@ -130,6 +141,7 @@ export class SyncService {
   #presenceBusy = false;
   #proposalsCheckedAt = Number.NEGATIVE_INFINITY;
   #knownProposals = new Set<string>();
+  #symlinksNoticed: string | null = null;
 
   constructor(readonly host: ServiceHost) {}
 
@@ -356,6 +368,8 @@ export class SyncService {
     try {
       const storage = this.host.storage();
       await this.host.saveOpenNotes();
+      const links = await this.host.files.symlinks();
+      if (links.length > 0) throw new SymlinksFound(links);
       await this.#checkMarker();
       const report = await this.#engine(storage).sync({
         pullOnly: device.mode === 'pull-only',
@@ -454,6 +468,16 @@ export class SyncService {
       if (!yes) return null;
       this.host.saveDevice({ ...this.host.device(), autoSync: true });
       await this.#run({ manual: true, allowMassDelete: true });
+      return null;
+    }
+    if (error instanceof SymlinksFound) {
+      // Nothing was read or sent. Tell the user once per set of links.
+      this.#set('error', `Stopped: ${error.message}.`);
+      const key = error.paths.join('\n');
+      if (options.manual === true || key !== this.#symlinksNoticed) {
+        this.#symlinksNoticed = key;
+        this.host.notify(`Obsy stopped: ${error.message}.`);
+      }
       return null;
     }
     if (error instanceof MarkerMismatch) {

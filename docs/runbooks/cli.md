@@ -74,6 +74,7 @@ Put lines that start with `-` after `--`. Text content comes from `--file` or st
 - Agent writes accept `--presence wait|propose|ignore` (default `wait`) and `--max-wait <seconds>` (default 300).
 - `block` returns the block hash; pass it as `--expect <hash>` next time to require that the block still holds the content the agent last wrote.
 - `--json` prints the result object, for programs.
+- `verify` refuses a folder that has symbolic links, as the plugin does.
 
 ### Exit codes
 

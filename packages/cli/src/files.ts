@@ -16,6 +16,7 @@ function sha256(bytes: Uint8Array): ContentHash {
 
 /**
  * A folder as `LocalFiles`, read only: `verify` compares it with the head.
+ * Like the plugin, it refuses a folder with symbolic links.
  * The write methods refuse, so that no command can change the folder by
  * mistake.
  */
@@ -26,14 +27,17 @@ export class FolderFiles implements LocalFiles {
     this.root = resolve(root);
   }
 
+  /** Throws when the folder has symbolic links: obsy does not sync through them. */
   async list(): Promise<LocalFile[]> {
     const out: LocalFile[] = [];
+    const links: string[] = [];
     const walk = async (dir: string): Promise<void> => {
       for (const entry of await readdir(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
         const path = relative(this.root, full).split(sep).join('/');
         if (!isSynced(path)) continue;
-        if (entry.isDirectory()) await walk(full);
+        if (entry.isSymbolicLink()) links.push(path);
+        else if (entry.isDirectory()) await walk(full);
         else if (entry.isFile()) {
           const bytes = await readFile(full);
           out.push({ path, hash: sha256(bytes), size: bytes.length });
@@ -41,6 +45,10 @@ export class FolderFiles implements LocalFiles {
       }
     };
     await walk(this.root);
+    if (links.length > 0)
+      throw new Error(
+        `The folder has symbolic links, which obsy does not sync: ${links.sort().slice(0, 5).join(', ')}${links.length > 5 ? `, and ${links.length - 5} more` : ''}`,
+      );
     return out;
   }
 

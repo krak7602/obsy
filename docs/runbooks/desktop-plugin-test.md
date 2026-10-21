@@ -58,6 +58,7 @@ To test with a copy of a vault, copy it first, outside the repository, for examp
 | NFD name, case-only rename, case twins | An NFD name written by another program, a case-only rename, and `Twin.md`/`twin.md` made on A and B: one file each, the twin as a conflict copy |
 | Offline | The S3 container is stopped; edits on A and B; syncs fail and say so; after a restart of the container, the edits merge |
 | Agents and proposals | B types in an open note without saving: B's presence record names the note. An agent in `propose` mode proposes (`editing`); one in `ignore` mode commits, and B's open editor gets the line with the typing and cursor kept. Undo removes the agent's line and keeps the typing. A edits inside the agent's block, so its next change is a proposal (`block-edited`). In A's review dialog, Accept merges the first proposal with later edits and Reject answers the second. The built `obsy` command appends a line |
+| Symbolic link | A link in A to a folder outside the vault: the sync stops before reading or sending anything and names the link; after the link is removed, it goes on, and nothing from the linked folder is in the bucket |
 | Killed mid-transfer | Obsidian is killed (`SIGKILL`) during a 24 MiB upload from A, restarted, then killed during the download on B, and restarted: the file arrives once and intact, with no temporary file and no repeated commit |
 | End | Verify shows no differences on A and B; both folders equal the head; no credential value in any `data.json` |
 
@@ -70,6 +71,8 @@ Folder trees are compared with names in NFC: macOS treats the NFC and NFD forms 
 - If a test Obsidian is left running, stop it with `pkill -f -- '--remote-debugging-port=19223'`. Stop the S3 server with `bash packages/storage-s3/scripts/s3-local.sh stop`.
 
 ## History
+
+- 2026-10-21: Added the symbolic link step.
 
 - 2026-10-21: Added the agents and proposals step (phase 4).
 

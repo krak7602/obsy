@@ -763,6 +763,32 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     );
   });
 
+  it('does not sync through a symbolic link, and says so', async () => {
+    const outside = join(root, 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'not-for-the-vault.md'), 'outside the vault\n');
+    const link = join(vaultA, at('Linked'));
+    execFileSync('ln', ['-s', outside, link]);
+    const before = await logLength(storage);
+    await edit(a, at('Welcome.md'), '# Welcome', '# Welcome (with a link)');
+    await sync(a);
+    const stopped = await status(a);
+    expect(stopped.state).toBe('error');
+    expect(stopped.detail).toContain('symbolic link');
+    expect(stopped.detail).toContain(at('Linked'));
+    expect(await logLength(storage)).toBe(before);
+    rmSync(link);
+    await sync(a);
+    expect((await status(a)).state).toBe('idle');
+    expect(await logLength(storage)).toBe(before + 1);
+    expect([...(await head(storage)).keys()].some((p) => p.includes('not-for-the-vault'))).toBe(
+      false,
+    );
+    note(
+      '- Symbolic link to a folder outside the vault: the sync stopped before reading or sending anything and named the link; after the link was removed, the sync went on',
+    );
+  });
+
   it('ends with both vaults equal to the head', async () => {
     for (const page of [a, b]) {
       await sync(page);

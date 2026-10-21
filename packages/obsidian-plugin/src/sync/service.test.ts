@@ -341,3 +341,25 @@ describe('SyncService and agents', () => {
     expect(mac.service.status.proposals).toBe(0);
   });
 });
+
+describe('SyncService and symbolic links', () => {
+  it('does not sync while the vault has symbolic links, and says so once', async () => {
+    const { mac, storage } = await twoDevices();
+    mac.vault.userWrite('a.md', 'a\n');
+    mac.host.answers.push(true);
+    await mac.service.connect();
+    const head = (await storage.list('log/')).keys.length;
+    mac.vault.links = ['docs'];
+    mac.vault.userWrite('b.md', 'b\n');
+    await mac.service.run();
+    await mac.service.run();
+    expect(mac.service.status.state).toBe('error');
+    expect(mac.service.status.detail).toContain('symbolic link (docs)');
+    expect(mac.host.notices.filter((n) => n.includes('symbolic link'))).toHaveLength(1);
+    expect((await storage.list('log/')).keys.length).toBe(head);
+    mac.vault.links = [];
+    await mac.service.run();
+    expect(mac.service.status.state).toBe('idle');
+    expect((await storage.list('log/')).keys.length).toBe(head + 1);
+  });
+});

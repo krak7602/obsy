@@ -176,6 +176,11 @@ export class VaultLocalFiles implements LocalFiles {
     return () => Promise.resolve(this.#port.file(path) === null);
   }
 
+  /** Symbolic links in the vault folder. obsy does not sync while there are any. */
+  symlinks(): Promise<string[]> {
+    return this.#port.symlinks();
+  }
+
   // ------------------------------------------------------------ LocalFiles
 
   async list(): Promise<LocalFile[]> {
