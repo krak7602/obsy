@@ -18,6 +18,7 @@ import {
   hashContent,
   logKey,
   parseLogKey,
+  pathKey,
   VAULT_KEY,
   type Commit,
   type ContentHash,
@@ -49,6 +50,9 @@ export interface SimResult {
     agentWrites: number;
     syncsStarted: number;
     pullOnlySyncs: number;
+    stoppedSyncs: number;
+    /** Sum over finished syncs of files left out by the phone's size limit. */
+    skippedFiles: number;
     syncsDone: number;
     syncErrors: number;
   };
@@ -73,6 +77,13 @@ const PATHS = [
 ];
 const DAILY = 'daily/2026-10-20.md';
 
+/**
+ * The phone's `maxFileSize`, in bytes: about five lines. Files grow past it,
+ * so the phone has files it holds over the limit, head files it does not
+ * take on, and local files it does not send.
+ */
+const PHONE_MAX_FILE_SIZE = 40;
+
 class SimStateStore implements StateStore {
   #state: string | null = null;
 
@@ -96,6 +107,7 @@ interface Device {
   readonly name: string;
   readonly files: MemoryLocalFiles;
   readonly engine: SyncEngine;
+  readonly maxFileSize: number;
   online: boolean;
 }
 
@@ -124,6 +136,8 @@ class World {
     agentWrites: 0,
     syncsStarted: 0,
     pullOnlySyncs: 0,
+    stoppedSyncs: 0,
+    skippedFiles: 0,
     syncsDone: 0,
     syncErrors: 0,
   };
@@ -137,6 +151,7 @@ class World {
     for (const name of ['mac', 'phone']) {
       const storage = this.#storage(name);
       const files = new MemoryLocalFiles(() => this.scheduler.wait(name, 'local'));
+      const maxFileSize = name === 'phone' ? PHONE_MAX_FILE_SIZE : Number.POSITIVE_INFINITY;
       const engine = new SyncEngine({
         storage,
         local: files,
@@ -147,8 +162,9 @@ class World {
         // Limits too high to trip, so that the rail check runs on every pass.
         // Simulated users often delete every file.
         rails: { maxFiles: 1000, minFiles: 1000, emptyVault: false },
+        ...(name === 'phone' ? { maxFileSize } : {}),
       });
-      this.devices.push({ name, files, engine, online: true });
+      this.devices.push({ name, files, engine, maxFileSize, online: true });
     }
     this.agent = new AgentWriter(this.#storage('agent'), this.env, { id: 'agent' });
   }
@@ -179,9 +195,13 @@ class World {
     // Some syncs are pull-only, as on a device that joins a vault.
     const pullOnly = this.random.next() < 0.2;
     if (pullOnly) this.stats.pullOnlySyncs++;
+    // Some syncs are asked to stop at a safe point, as when iOS hides the app.
+    const stopping = this.random.next() < 0.1;
+    const shouldStop = (): boolean => stopping && this.random.next() < 0.2;
     this.scheduler.spawn(device.name, async () => {
-      const report = await device.engine.sync({ pullOnly });
+      const report = await device.engine.sync({ pullOnly, shouldStop });
       this.stats.syncsDone++;
+      this.stats.skippedFiles += report.skipped;
       this.stats.commits += report.commits;
       this.stats.conflictCopies += report.conflictCopies;
     });
@@ -364,7 +384,15 @@ class World {
 
     // 3. No agent commit without a matching base: an agent only appends to the head.
     const replay = new Manifest(vault.epoch);
+    // Deletes each device sent: device, path key, and the content deleted.
+    const deleted = new Set<string>();
     for (const commit of commits) {
+      for (const op of commit.ops) {
+        if (op.type !== 'delete') continue;
+        const before = replay.file(op.fileId);
+        if (before !== undefined)
+          deleted.add(`${commit.actor.id}|${pathKey(op.path)}|${before.hash}`);
+      }
       if (commit.actor.kind === 'agent') {
         for (const op of commit.ops) {
           if (op.type !== 'put') throw new Error('agent made a non-put op');
@@ -381,21 +409,34 @@ class World {
       replay.apply(commit);
     }
 
-    // 4. Devices converge: every device holds exactly the head files.
+    // 4. Devices converge: every device holds exactly the head files. A
+    // device with a size limit may lack a head file over the limit that it
+    // never held.
     const head = new Map<string, string>();
-    for (const [, entry] of manifest.liveFiles()) head.set(entry.path, await content(entry.hash));
+    const headByKey = new Map<string, { path: string; size: number }>();
+    for (const [, entry] of manifest.liveFiles()) {
+      head.set(entry.path, await content(entry.hash));
+      headByKey.set(pathKey(entry.path), { path: entry.path, size: entry.size });
+    }
     for (const device of this.devices) {
       const local = device.files.snapshot();
-      const localPaths = [...local.keys()].sort();
-      const headPaths = [...head.keys()].sort();
-      if (JSON.stringify(localPaths) !== JSON.stringify(headPaths)) {
-        throw new Error(
-          `${device.name} has ${JSON.stringify(localPaths)}, head has ${JSON.stringify(headPaths)}`,
-        );
+      // 4a. A device never deletes in the bucket a file that it keeps. Empty
+      // files all have the same content, so they are not checked.
+      for (const [path, bytes] of local) {
+        if (bytes.length === 0 || head.get(path) === decodeUtf8Strict(bytes)) continue;
+        if (deleted.has(`${device.name}|${pathKey(path)}|${await hashContent(bytes)}`)) {
+          throw new Error(`${device.name} deleted ${path} in the bucket but kept it`);
+        }
       }
       for (const [path, bytes] of local) {
-        if (decodeUtf8Strict(bytes) !== head.get(path))
+        if (head.get(path) !== decodeUtf8Strict(bytes)) {
           throw new Error(`${device.name} differs at ${path}`);
+        }
+      }
+      for (const entry of headByKey.values()) {
+        if (local.get(entry.path) === undefined && entry.size <= device.maxFileSize) {
+          throw new Error(`${device.name} lacks ${entry.path} (${entry.size} bytes)`);
+        }
       }
     }
 
@@ -433,6 +474,7 @@ export async function simulate(options: SimOptions): Promise<SimResult> {
       for (const owner of ['mac', 'phone', 'agent']) {
         const error = world.scheduler.takeError(owner);
         if (error !== undefined) world.stats.syncErrors++;
+        if (error instanceof Error && error.name === 'SyncStopped') world.stats.stoppedSyncs++;
         if (error !== undefined && !isExpected(error)) throw error;
       }
     }
@@ -456,5 +498,8 @@ export async function simulate(options: SimOptions): Promise<SimResult> {
 
 /** Errors that a sync may end with under faults; the next sync recovers. */
 function isExpected(error: unknown): boolean {
-  return error instanceof Error && error.name === 'TransientStorageError';
+  return (
+    error instanceof Error &&
+    (error.name === 'TransientStorageError' || error.name === 'SyncStopped')
+  );
 }

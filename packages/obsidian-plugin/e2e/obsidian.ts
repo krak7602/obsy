@@ -2,7 +2,7 @@
 // sees the user's vaults, and opens scratch vaults in it. Test-only code.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -38,11 +38,15 @@ export class Desktop {
   static async launch(options: LaunchOptions): Promise<Desktop> {
     const profile = join(options.root, 'profile');
     mkdirSync(profile, { recursive: true });
-    const vaults: Record<string, { path: string; ts: number; open: boolean }> = {};
-    for (const path of options.vaults) {
-      vaults[randomBytes(8).toString('hex')] = { path, ts: Date.now(), open: true };
+    // A relaunch keeps the vault list, so each vault keeps its app ID, its
+    // local storage, and so its obsy state.
+    if (!existsSync(join(profile, 'obsidian.json'))) {
+      const vaults: Record<string, { path: string; ts: number; open: boolean }> = {};
+      for (const path of options.vaults) {
+        vaults[randomBytes(8).toString('hex')] = { path, ts: Date.now(), open: true };
+      }
+      writeFileSync(join(profile, 'obsidian.json'), JSON.stringify({ vaults }));
     }
-    writeFileSync(join(profile, 'obsidian.json'), JSON.stringify({ vaults }));
     const log = openSync(join(options.root, 'obsidian.log'), 'a');
     const child = spawn(
       options.binary ?? DEFAULT_BINARY,
@@ -88,9 +92,18 @@ export class Desktop {
     return page;
   }
 
+  /** Kills Obsidian at once, as a crash or an iOS kill would. */
+  async kill(): Promise<void> {
+    for (const page of this.pages.values()) page.close();
+    if (this.process.exitCode !== null || this.process.signalCode !== null) return;
+    const exited = new Promise((resolve) => this.process.once('exit', resolve));
+    this.process.kill('SIGKILL');
+    await exited;
+  }
+
   async stop(): Promise<void> {
     for (const page of this.pages.values()) page.close();
-    if (this.process.exitCode !== null) return;
+    if (this.process.exitCode !== null || this.process.signalCode !== null) return;
     const exited = new Promise((resolve) => this.process.once('exit', resolve));
     this.process.kill('SIGTERM');
     await Promise.race([exited, sleep(10_000)]);
@@ -101,6 +114,7 @@ export class Desktop {
 /** Turns community plugins on in a vault window and enables obsy. */
 export async function enablePlugin(page: Page): Promise<void> {
   await page.evaluate(`
+    if (app.plugins.getPlugin('obsy')) return;
     await app.plugins.setEnable(true);
     await app.plugins.loadManifests();
     await app.plugins.enablePluginAndSave('obsy');

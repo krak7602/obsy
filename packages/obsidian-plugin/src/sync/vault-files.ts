@@ -21,6 +21,12 @@ export interface VaultLocalFilesOptions {
   readonly exclude?: (path: string) => boolean;
   /** Milliseconds since the epoch. */
   readonly now?: () => number;
+  /**
+   * Write files larger than this in pieces of this size (`createBinary`,
+   * then `appendBinary`), and replace such files through a temporary file.
+   * For mobile, where one large write can fail. Whole writes when not set.
+   */
+  readonly chunkBytes?: number;
 }
 
 /** The smallest single replacement that turns `before` into `after`, or null when they are equal. */
@@ -86,6 +92,7 @@ export class VaultLocalFiles implements LocalFiles {
   readonly #port: VaultPort;
   readonly #exclude: (path: string) => boolean;
   readonly #now: () => number;
+  readonly #chunk: number | undefined;
   readonly #hashes = new Map<string, HashCacheEntry>();
   #cacheChanged = false;
   /**
@@ -102,6 +109,7 @@ export class VaultLocalFiles implements LocalFiles {
     this.#port = port;
     this.#exclude = options.exclude ?? (() => false);
     this.#now = options.now ?? (() => Date.now());
+    this.#chunk = options.chunkBytes;
   }
 
   // ------------------------------------------------------------ hash cache
@@ -256,6 +264,9 @@ export class VaultLocalFiles implements LocalFiles {
     const before = plainText(current);
     const after = plainText(bytes);
     if (before === null || after === null) {
+      if (this.#chunk !== undefined && bytes.length > this.#chunk) {
+        return this.#replace(path, bytes);
+      }
       this.#markOwn(path);
       return this.#attempt(() => this.#port.modifyBinary(path, bytes), this.#gone(path));
     }
@@ -292,17 +303,57 @@ export class VaultLocalFiles implements LocalFiles {
     return done && applied;
   }
 
-  async #create(path: string, bytes: Uint8Array): Promise<boolean> {
-    const key = pathKey(path);
-    if (this.#pathIndex().has(key) || (await this.#port.exists(path))) return false;
+  /** Writes `bytes` to a new temporary file next to `path`, in pieces when set. Returns its path. */
+  async #writeTemp(path: string, bytes: Uint8Array): Promise<string> {
     const temp = `${path}${TEMP_SUFFIX}`;
     if (this.#port.file(temp) !== null || (await this.#port.exists(temp))) {
       this.#markOwn(temp);
       await this.#port.trash(temp);
     }
     this.#markOwn(temp);
+    const chunk = this.#chunk;
+    if (chunk === undefined || bytes.length <= chunk) {
+      await this.#port.createBinary(temp, bytes);
+      return temp;
+    }
+    await this.#port.createBinary(temp, bytes.subarray(0, chunk));
+    for (let offset = chunk; offset < bytes.length; offset += chunk) {
+      await this.#port.appendBinary(temp, bytes.subarray(offset, offset + chunk));
+    }
+    return temp;
+  }
+
+  /**
+   * Replaces a large file whose content was checked: writes a temporary
+   * file, checks that the file did not change meanwhile, deletes it, and
+   * renames the temporary file into place. A stop in between leaves the
+   * path empty; the engine's intent then restores the file from the bucket.
+   */
+  async #replace(path: string, bytes: Uint8Array): Promise<boolean> {
+    const checked = this.#port.file(path);
+    if (checked === null) return false;
+    const temp = await this.#writeTemp(path, bytes);
+    const now = this.#port.file(path);
+    if (now === null || now.size !== checked.size || now.mtime !== checked.mtime) {
+      await this.#port.trash(temp);
+      return false;
+    }
     this.#markOwn(path);
-    await this.#port.createBinary(temp, bytes);
+    if (!(await this.#attempt(() => this.#port.trash(path), this.#gone(path)))) {
+      await this.#port.trash(temp);
+      return false;
+    }
+    return this.#attempt(
+      () => this.#port.rename(temp, path),
+      async () => this.#port.file(temp) === null || (await this.#port.exists(path)),
+    );
+  }
+
+  async #create(path: string, bytes: Uint8Array): Promise<boolean> {
+    const key = pathKey(path);
+    if (this.#pathIndex().has(key) || (await this.#port.exists(path))) return false;
+    this.#markOwn(path);
+    const temp = await this.#writeTemp(path, bytes);
     const renamed = await this.#attempt(
       () => this.#port.rename(temp, path),
       async () => this.#port.file(temp) === null || (await this.#port.exists(path)),

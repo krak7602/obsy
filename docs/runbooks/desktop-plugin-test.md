@@ -38,7 +38,7 @@ To test with a copy of a vault, copy it first, outside the repository, for examp
 
 ### What the test does
 
-1. Copies the source into three new folders, A, B, and an empty C. Installs `dist/main.js` and the root `manifest.json` in each, and sets each vault to delete into its `.trash` folder.
+1. Copies the source into two new folders, A and B, and makes two empty ones, C and D. Installs `dist/main.js`, `dist/styles.css`, and the root `manifest.json` in each, and sets each vault to delete into its `.trash` folder.
 2. Starts Obsidian with `--user-data-dir` set to a new profile folder that lists only these vaults, and `--remote-debugging-port=19223`. Drives each window over the Chrome DevTools Protocol (`e2e/cdp.ts`): enables the plugin, stores the S3 credentials in `SecretStorage`, and fills in the settings under a new prefix `obsy-e2e/<run id>/`.
 3. Runs the steps in `e2e/desktop.integration.test.ts`. Dialogs are answered by clicking their buttons.
 
@@ -54,9 +54,13 @@ To test with a copy of a vault, copy it first, outside the repository, for examp
 | Rename, delete, file written outside Obsidian | Synced; the delete is in B's `.trash` |
 | Automatic sync | An edit is sent without a manual sync and reaches B |
 | Mass delete | The sync stops and asks; Cancel sends nothing; confirming deletes on both |
+| D pairs with a code, with a 1 MB size limit | The code alone fills in the settings; the credential goes to D's own secret names; the 3 MiB file is left out; verify: no differences, 1 skipped |
+| NFD name, case-only rename, case twins | An NFD name written by another program, a case-only rename, and `Twin.md`/`twin.md` made on A and B: one file each, the twin as a conflict copy |
+| Offline | The S3 container is stopped; edits on A and B; syncs fail and say so; after a restart of the container, the edits merge |
+| Killed mid-transfer | Obsidian is killed (`SIGKILL`) during a 24 MiB upload from A, restarted, then killed during the download on B, and restarted: the file arrives once and intact, with no temporary file and no repeated commit |
 | End | Verify shows no differences on A and B; both folders equal the head; no credential value in any `data.json` |
 
-The summary prints file counts and timings, never file names.
+Folder trees are compared with names in NFC: macOS treats the NFC and NFD forms of a name as one, and keeps the form a file was created with. The summary prints file counts and timings, never file names.
 
 ### When it fails
 
@@ -66,4 +70,5 @@ The summary prints file counts and timings, never file names.
 
 ## History
 
+- 2026-10-21: Added pairing, the size limit, names, offline, and kill steps (phase 3).
 - 2026-10-21: Created with the phase 2 desktop test.

@@ -3,8 +3,17 @@
 // see docs/runbooks/desktop-plugin-test.md. It never opens a real vault: it
 // copies a generated vault, or the folder in OBSY_E2E_SOURCE, into a new
 // temporary folder, and Obsidian runs with its own profile folder.
-import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -23,6 +32,7 @@ const envFile = fileURLToPath(new URL('../../storage-s3/.env.s3-local', import.m
 const pluginDir = fileURLToPath(new URL('..', import.meta.url));
 const pluginFiles = [
   join(pluginDir, 'dist', 'main.js'),
+  join(pluginDir, 'dist', 'styles.css'),
   join(pluginDir, '..', '..', 'manifest.json'),
 ];
 const binary = process.env['OBSY_E2E_OBSIDIAN'] ?? DEFAULT_BINARY;
@@ -84,7 +94,7 @@ async function head(storage: Storage): Promise<Map<string, string>> {
     checkpoint === null ? new Manifest(vault.epoch) : Manifest.fromCheckpoint(checkpoint);
   await remote.catchUp(manifest);
   const files = [...manifest.liveFiles()].map(
-    ([, e]) => [e.path, e.hash.slice('sha256:'.length)] as const,
+    ([, e]) => [e.path.normalize('NFC'), e.hash.slice('sha256:'.length)] as const,
   );
   return new Map(files.sort(([a], [b]) => (a < b ? -1 : 1)));
 }
@@ -118,11 +128,29 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
   const vaultA = join(root, 'vault-a');
   const vaultB = join(root, 'vault-b');
   const vaultC = join(root, 'vault-c');
+  const vaultD = join(root, 'vault-d');
   const prefix = `obsy-e2e/${runId}/`;
   let desktop: Desktop;
   let a: Page;
   let b: Page;
   let c: Page;
+  let d: Page;
+  let endpoint = '';
+
+  /** Starts Obsidian (again) on the four vaults and enables the plugin in each. */
+  async function launch(): Promise<void> {
+    desktop = await Desktop.launch({
+      root,
+      vaults: [vaultA, vaultB, vaultC, vaultD],
+      port: 19_223,
+      binary,
+    });
+    a = desktop.page(vaultA);
+    b = desktop.page(vaultB);
+    c = desktop.page(vaultC);
+    d = desktop.page(vaultD);
+    for (const page of [a, b, c, d]) await enablePlugin(page);
+  }
   let storage: S3Storage;
   let fileCount = 0;
   let credentials: string[] = [];
@@ -138,6 +166,7 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
       secretAccessKey: env['OBSY_S3_LOCAL_SECRET_ACCESS_KEY'] as string,
     };
     storage = new S3Storage({ ...settings, prefix });
+    endpoint = settings.endpoint;
     credentials = [settings.accessKeyId, settings.secretAccessKey];
 
     const source = process.env['OBSY_E2E_SOURCE'] ?? join(root, 'source');
@@ -150,27 +179,19 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
       `- Source: ${process.env['OBSY_E2E_SOURCE'] === undefined ? 'generated scratch vault' : 'copy of a vault'}, ${fileCount} files`,
     );
     mkdirSync(vaultC);
-    for (const vault of [vaultA, vaultB, vaultC]) prepareVault(vault, pluginFiles);
+    mkdirSync(vaultD);
+    for (const vault of [vaultA, vaultB, vaultC, vaultD]) prepareVault(vault, pluginFiles);
 
-    desktop = await Desktop.launch({
-      root,
-      vaults: [vaultA, vaultB, vaultC],
-      port: 19_223,
-      binary,
-    });
-    a = desktop.page(vaultA);
-    b = desktop.page(vaultB);
-    c = desktop.page(vaultC);
+    await launch();
     const version = await a.evaluate<string>(
       'return /obsidian\\/([\\d.]+)/i.exec(navigator.userAgent)?.[1] ?? "unknown";',
     );
-    note(`- Obsidian ${version} desktop, three vault windows, own profile folder`);
+    note(`- Obsidian ${version} desktop, four vault windows, own profile folder`);
     for (const [page, name] of [
       [a, 'desktop-a'],
       [b, 'desktop-b'],
       [c, 'desktop-c'],
     ] as const) {
-      await enablePlugin(page);
       await run(
         page,
         `
@@ -423,6 +444,197 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     );
   });
 
+  it('pairs a new device with a code, which leaves out files over its size limit', async () => {
+    // The steps from here sync by hand, so that no automatic sync runs between checks.
+    for (const page of [a, b]) await run(page, 'p.service.setAutoSync(false); return null;');
+    const code = await run<string>(a, 'return p.service.pairingCode();');
+    await run(
+      d,
+      'p.saveDevice({ ...p.device, deviceName: "desktop-d", maxFileSizeMB: 1 }); return null;',
+    );
+    await run(d, 'window.__obsyOp = p.service.joinWithCode(args.code); return null;', { code });
+    await run(
+      d,
+      'await click("Use this code"); await click("Join in pull-only mode"); await window.__obsyOp; return null;',
+    );
+    const settings = await run<{ endpoint: string; accessKeyIdSecret: string }>(
+      d,
+      'return p.config;',
+    );
+    expect(settings.endpoint).toBe(endpoint);
+    expect(settings.accessKeyIdSecret).toMatch(/^obsy-[a-f0-9]{16}-access-key-id$/);
+    // Files over 1 MB: the generated 3 MiB file, and any in a copy of a vault.
+    const large = [...readTree(vaultA).keys()].filter(
+      (name) => statSync(join(vaultA, name)).size > 1024 * 1024,
+    );
+    expect(large).toContain(at('Attachments/big.bin'));
+    const report = await verify(d);
+    expect(report.problems).toEqual([]);
+    expect(report.skipped).toBe(large.length);
+    const expected = readTree(vaultA);
+    for (const name of large) expected.delete(name);
+    expect(readTree(vaultD)).toEqual(expected);
+    note(
+      '- Pairing: a new empty vault joined with the code alone; the credential went to its own secret names; a 1 MB size limit left out the files over 1 MB; verify: no differences, those skipped',
+    );
+  });
+
+  it('keeps Unicode and case variants of names apart without loss or duplicates', async () => {
+    // An NFD name written by another program, a case-only rename, and two
+    // devices creating the same name in different case.
+    const nfd = at('Notes/café au lait.md');
+    writeFileSync(join(vaultA, nfd), '# Written with an NFD name\n');
+    await run(
+      a,
+      'for (let i = 0; i < 100 && !app.vault.getFiles().some((f) => f.path.normalize("NFC") === args.nfc); i++) await sleep(100); return null;',
+      { nfc: nfd.normalize('NFC') },
+    );
+    await run(a, 'await app.vault.rename(file(args.from), args.to); return null;', {
+      from: at('Notes/windows.md'),
+      to: at('Notes/Windows.md'),
+    });
+    await run(a, 'await app.vault.create(args.path, "twin from A\\n"); return null;', {
+      path: at('Inbox/Twin.md'),
+    });
+    await run(b, 'await app.vault.create(args.path, "twin from B\\n"); return null;', {
+      path: at('Inbox/twin.md'),
+    });
+    await sync(a);
+    await sync(b);
+    await sync(a);
+    const treeA = readTree(vaultA);
+    const treeB = readTree(vaultB);
+    const differ = [...new Set([...treeA.keys(), ...treeB.keys()])].filter(
+      (name) => treeA.get(name) !== treeB.get(name),
+    );
+    expect(differ.map((name) => JSON.stringify(name))).toEqual([]);
+    const names = [...treeA.keys()];
+    expect(names.filter((n) => n.normalize('NFC') === nfd.normalize('NFC'))).toHaveLength(1);
+    expect(names.filter((n) => n.toLowerCase() === at('Notes/windows.md').toLowerCase())).toEqual([
+      at('Notes/Windows.md'),
+    ]);
+    const twins = names.filter((n) => n.toLowerCase().startsWith(at('Inbox/twin').toLowerCase()));
+    expect(twins).toHaveLength(2);
+    expect(twins).toContain(at('Inbox/Twin.md'));
+    const copy = twins.find((n) => n !== at('Inbox/Twin.md')) as string;
+    expect(copy).toMatch(/\(conflict desktop-b \d{12}\)\.md$/);
+    expect(await read(b, copy)).toBe('twin from B\n');
+    for (const page of [a, b]) expect((await verify(page)).problems).toEqual([]);
+    const remote = new RemoteVault(storage, webEnvironment());
+    const vault = await remote.getVault();
+    const manifest = new Manifest(vault?.epoch ?? 1);
+    await remote.catchUp(manifest);
+    const stored = [...manifest.liveFiles()]
+      .map(([, e]) => e.path)
+      .find((path) => path.normalize('NFC') === nfd.normalize('NFC')) as string;
+    const form = stored === nfd ? 'NFD' : stored === nfd.normalize('NFC') ? 'NFC' : 'other';
+    note(
+      `- The NFD name was stored in the bucket in ${form}; on disk, A kept NFD and B wrote ${form}`,
+    );
+    note(
+      '- An NFD file name from another program, a case-only rename, and a case twin made on both devices: one file each, the twin kept as a conflict copy; verify: no differences',
+    );
+  });
+
+  it('merges edits made while the bucket was unreachable', async () => {
+    execFileSync('docker', ['stop', 'obsy-s3-test'], { stdio: 'ignore' });
+    try {
+      await edit(a, at('Projects/Gamma/plan.md'), '# Gamma plan', '# Gamma plan (offline on A)');
+      await edit(b, at('Projects/Gamma/plan.md'), '3. ', '3. (offline on B) ');
+      await run(b, 'await app.vault.create(args.path, "# Written offline\\n"); return null;', {
+        path: at('Inbox/offline.md'),
+      });
+      for (const page of [a, b]) {
+        await sync(page);
+        expect((await status(page)).state).toBe('error');
+      }
+    } finally {
+      execFileSync('docker', ['start', 'obsy-s3-test'], { stdio: 'ignore' });
+    }
+    for (let i = 0; i < 60; i++) {
+      const up = await fetch(endpoint).then(
+        () => true,
+        () => false,
+      );
+      if (up) break;
+      await sleep(500);
+    }
+    await sync(a);
+    await sync(b);
+    await sync(a);
+    const text = await read(a, at('Projects/Gamma/plan.md'));
+    expect(text).toContain('(offline on A)');
+    expect(text).toContain('(offline on B)');
+    expect(readTree(vaultA)).toEqual(readTree(vaultB));
+    expect(readTree(vaultA).has(at('Inbox/offline.md'))).toBe(true);
+    note(
+      '- Edits on both devices while the S3 server was stopped: the syncs failed and said so; once it was back, the edits merged and the new note arrived',
+    );
+  });
+
+  it('survives Obsidian being killed during an upload and during a download', async () => {
+    const path = at('Attachments/huge.bin');
+    const bytes = randomBytes(24 * 1024 * 1024);
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    writeFileSync(join(vaultA, path), bytes);
+    await run(
+      a,
+      'for (let i = 0; i < 100 && !app.vault.getAbstractFileByPath(args.path); i++) await sleep(100); file(args.path); return null;',
+      { path },
+    );
+    const before = await logLength(storage);
+
+    // Kill A as soon as the blob is in the bucket, before or just after the
+    // commit: the moment that the journal must cover.
+    const blobKey = `blobs/sha256/${hash}`;
+    await run(a, 'window.__obsyOp = p.service.run({ manual: true }); return null;');
+    let blobAtKill = false;
+    for (let i = 0; i < 2000 && !blobAtKill; i++) {
+      blobAtKill = (await storage.list('blobs/sha256/', undefined, 1000)).keys.includes(blobKey);
+    }
+    const commitAtKill = (await logLength(storage)) > before;
+    await desktop.kill();
+    await launch();
+    await sync(a);
+    expect((await head(storage)).get(path)).toBe(hash);
+    expect(readTree(vaultA).get(path)).toBe(hash);
+
+    // Kill B as soon as its temporary download file appears: mid-write or
+    // just before the rename into place.
+    const temp = join(vaultB, `${path}.obsy-tmp`);
+    await run(b, 'window.__obsyOp = p.service.run({ manual: true }); return null;');
+    let tempAtKill = false;
+    const waitStart = Date.now();
+    while (!tempAtKill && readTree(vaultB).get(path) !== hash && Date.now() - waitStart < 30_000) {
+      tempAtKill = existsSync(temp);
+      if (!tempAtKill) await sleep(2);
+    }
+    const downloadedAtKill = readTree(vaultB).get(path) === hash;
+    await desktop.kill();
+    await launch();
+    await sync(b);
+    await sync(a);
+    expect(readTree(vaultB).get(path)).toBe(hash);
+    for (const vault of [vaultA, vaultB]) {
+      const leftovers = [...readTree(vault).keys()].filter(
+        (name) => name.includes('obsy-tmp') || name.includes('huge ('),
+      );
+      expect(leftovers).toEqual([]);
+    }
+    const ids = new Set<string>();
+    let count = 0;
+    for (let seq = 1; ; seq++) {
+      const object = await storage.get(`log/${String(seq).padStart(16, '0')}.json`);
+      if (object === null) break;
+      count++;
+      ids.add((JSON.parse(new TextDecoder().decode(object.body)) as { opId: string }).opId);
+    }
+    expect(ids.size).toBe(count);
+    note(
+      `- Obsidian killed as soon as a 24 MiB blob reached the bucket (blob seen: ${blobAtKill ? 'yes' : 'no'}; commit made: ${commitAtKill ? 'yes' : 'no'}), and as soon as its temporary download file appeared on the other device (temporary file seen: ${tempAtKill ? 'yes' : 'no'}; file complete: ${downloadedAtKill ? 'yes' : 'no'}): after a restart the file arrived once, intact, with no leftover temporary file and no repeated commit`,
+    );
+  });
+
   it('ends with both vaults equal to the head', async () => {
     for (const page of [a, b]) {
       await sync(page);
@@ -431,10 +643,10 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     const headTree = await head(storage);
     expect(readTree(vaultA)).toEqual(headTree);
     expect(readTree(vaultB)).toEqual(headTree);
-    for (const vault of [vaultA, vaultB, vaultC]) {
+    for (const vault of [vaultA, vaultB, vaultC, vaultD]) {
       const data = readFileSync(join(vault, '.obsidian', 'plugins', 'obsy', 'data.json'), 'utf8');
       for (const value of credentials) expect(data.includes(value)).toBe(false);
-      expect(JSON.parse(data)).toMatchObject({ accessKeyIdSecret: expect.stringMatching(/-key$/) });
+      expect(JSON.parse(data)).toMatchObject({ accessKeyIdSecret: expect.stringMatching(/key/) });
     }
     note('- No credential value is in any data.json; it holds only the secret names');
     note(

@@ -8,7 +8,7 @@ updated: 2026-10-21
 
 ## Current
 
-Status: **existing behavior on desktop** (phase 2), tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). Mobile parts (chunked attachments, the attachment cap, pairing) are accepted design for phase 3 and not implemented. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
+Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop and in the simulator, not yet on an iPhone ([results](../learning/mobile-sync-phase3.md)). Version 0.1.0 is not released. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
 
 The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [relay](relay.md) as a later option. It owns the Obsidian-specific parts: reading and writing vault files safely, durable state, the lifecycle, settings, and the questions that the safety rails ask.
 
@@ -21,6 +21,7 @@ The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [r
 | State | `sync/idb-store.ts` | `IdbStateStore`: device state and file hashes in IndexedDB |
 | Service | `sync/service.ts` | Connect, sync runs, verify, and the rail questions; one operation at a time |
 | Scheduler | `sync/scheduler.ts` | When syncs run: one at a time, debounced after edits |
+| Pairing | `pairing.ts`, `ui/pairing-modals.ts` | Pairing codes, the QR code, and joining with a code |
 | Plugin | `main.ts`, `ui/` | Commands, status bar, settings tab, dialogs |
 
 ### Connect and join
@@ -30,14 +31,14 @@ The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [r
 - With no `vault.json` there, it asks, creates the vault (`initVault`), and syncs in **full** mode. This device's files become the vault.
 - With a vault there, it asks, then joins in **pull-only** mode: remote changes are applied on the device, and nothing is sent. A local file that equals a bucket file is adopted. A local file that differs is renamed to a conflict copy, and the bucket version takes its path. The user runs **Verify**, then **Start full sync**.
 
-Connect clears the device state, so a new connection always reconciles every file by content. **Disconnect** stops syncing and forgets the state; files stay as they are. Pull-only is a `SyncEngine.sync({ pullOnly: true })` run ([protocol](protocol.md#sync-engine)). Pairing by code is phase 3.
+Connect clears the device state, so a new connection always reconciles every file by content. **Disconnect** stops syncing and forgets the state; files stay as they are. Pull-only is a `SyncEngine.sync({ pullOnly: true })` run ([protocol](protocol.md#sync-engine)). A device can also join with a [pairing code](#pairing), which fills in the settings.
 
 ### Lifecycle
 
 Existing behavior:
 
 - A sync runs after `onLayoutReady`, when the window becomes visible, 2 s after the last vault event that obsy did not cause, and every 30 s.
-- On mobile, sync pauses while the app is hidden, and the 30 s timer runs only while it is visible. iOS gives plugins no background time: JavaScript ran for about 3.5 to 4 s after the app was hidden, then stopped ([evidence](../learning/iphone-probe.md#background-behavior)).
+- On mobile, sync pauses while the app is hidden, and the 30 s timer runs only while it is visible. iOS gives plugins no background time: JavaScript ran for about 3.5 to 4 s after the app was hidden, then stopped ([evidence](../learning/iphone-probe.md#background-behavior)). A sync that is running when the app is hidden stops at its next safe point (before a pass, a download, an upload, or a claim) with its state saved, and goes on when the app is visible again (`SyncRunOptions.shouldStop`, [protocol](protocol.md#sync-engine)). A request already in flight may fail at resume; the engine treats it like any interrupted request.
 - On desktop, sync does not pause when the window is hidden. macOS reports a window behind other windows as hidden, and an edit saved just before the user switches apps must still go out ([finding](../learning/desktop-plugin-phase2.md#findings)).
 - Syncs never overlap. A request during a sync starts one more sync after it. Every service operation (sync, connect, verify, disconnect) waits for the one before it.
 - Before each sync, every open note is saved, so the sync sees what the user typed.
@@ -85,15 +86,24 @@ Accepted design, not implemented: syncing the config folder, opt-in by category,
 
 ### Large files
 
-Accepted design for phase 3: mobile caps attachments (default 50 MB) and writes downloads in chunks with `appendBinary`. Desktop reads and writes whole files.
+Existing behavior:
+
+- **Size limit.** Each device has a largest file size, **Largest file on this device** (default 50 MB on mobile, no limit on desktop). A head file over the limit that the device does not hold yet is not downloaded; a local file at its path is renamed to a conflict copy and sent. Files the device already syncs, and files made on the device, sync at any size: leaving out a file the device holds could look like a delete ([decision](../decisions/2026-10-21-pairing-and-size-limit.md)). The status and **Verify** count the files left out.
+- **Chunked writes.** On mobile, a downloaded file larger than 4 MiB is written in 4 MiB pieces (`createBinary`, then `appendBinary`) to a temporary file and renamed into place. A larger binary file that changes is replaced the same way: the temporary file is written, the old file is checked unchanged and deleted, and the new one is renamed into place. A stop in between leaves the path empty, and the engine's write intent restores the file from the bucket.
+
+The whole file is still in memory once: `requestUrl` returns whole bodies, and Obsidian has no ranged read.
 
 ### Credentials
 
-Existing behavior. The access key ID and secret access key are entries in Obsidian `SecretStorage`. `data.json` holds only the names of the two entries, chosen in the settings tab with the secret control. Give each vault its own secret names: on mobile, same-named secrets may be shared across vaults ([research](../learning/sync-design-research.md)). The desktop test checks that no credential value reaches `data.json`.
+Existing behavior. The access key ID and secret access key are entries in Obsidian `SecretStorage`. `data.json` holds only the names of the two entries, chosen in the settings tab with the secret control, or set by a pairing code to names unique to the vault and device (`obsy-<localId>-access-key-id` and `obsy-<localId>-secret-access-key`): on mobile, same-named secrets may be shared across vaults ([research](../learning/sync-design-research.md)). The desktop test checks that no credential value reaches `data.json`.
 
 ### Pairing
 
-Accepted design for phase 3: the first device creates the vault. Others join by scanning or typing a short pairing code that carries the bucket endpoint, prefix, and a scoped credential (or a relay token).
+Existing behavior. On a connected device, **Pair another device** shows a pairing code once, as a QR code and as text to copy. The code carries the endpoint, bucket, region, addressing, prefix, the credential, and the vault ID: `obsy1:` and base64url JSON (`src/pairing.ts`). It is a secret; obsy never stores or logs it. The QR code holds an `obsidian://obsy-pair?code=…` link, so a phone camera can open it in Obsidian, where the plugin's protocol handler starts the join.
+
+On a device that is not connected, **Join with a pairing code** (or the link) asks, stores the credential under this vault's own secret names, fills in the settings, and joins in pull-only mode. It joins only the vault that the code names: a prefix with another vault, or none, stops the join.
+
+The code carries the same credential that the first device uses. A per-device credential, scoped to the vault prefix, is not implemented ([decision](../decisions/2026-10-21-pairing-and-size-limit.md)).
 
 ### Platform
 
@@ -105,16 +115,17 @@ Observed on an iPhone (iOS 18.7, Obsidian 1.14.5): the transport passes 20 confo
 
 ### Tests
 
-`pnpm test` runs the adapter against a fake vault (`src/testing/fake-vault.ts`): conditional writes, editor transactions, unsaved edits, temporary files, and 150 random runs of the engine on two devices with user edits that land during syncs. It also runs the service on fake IndexedDB. `pnpm run test:desktop` runs the scenario in a real Obsidian app ([runbook](../runbooks/desktop-plugin-test.md)).
+`pnpm test` runs the adapter against a fake vault (`src/testing/fake-vault.ts`): conditional writes, editor transactions, unsaved edits, temporary files, chunked writes, and 400 random runs of the engine on two devices with user edits that land during syncs (half of them with chunked writes). It also runs the service on fake IndexedDB: connect, rails, pairing, and stops. `pnpm run test:desktop` runs the scenario in a real Obsidian app ([runbook](../runbooks/desktop-plugin-test.md)).
 
 ### Build and distribution
 
 Existing behavior: `packages/obsidian-plugin/` builds `dist/main.js` (CommonJS) with Rolldown. A second entry builds the platform probe, a separate plugin with the ID `obsy-probe`, into `dist/obsy-probe/` ([platform probe](../runbooks/platform-probe.md)). The probe is installed by hand in scratch vaults and is never released.
 
-The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases. No release exists yet.
+The community directory reads `manifest.json` from the root of the default branch, so `manifest.json` and `versions.json` stay at the repository root. A release is a GitHub release whose tag equals the manifest `version`, with `main.js`, `manifest.json`, and `styles.css` attached. Plain `x.y.z` tags therefore belong to the plugin; npm package releases need a different tag form, such as `@obsy/core@x.y.z`. Beta builds go out through BRAT from the same releases. `pnpm --filter @obsy/obsidian-plugin run release <version>` prepares the release files and publishes only with `--publish` ([release runbook](../runbooks/plugin-release.md)). No release exists yet, and the repository has no GitHub remote.
 
 ## History
 
+- 2026-10-21: Mobile parts implemented (phase 3): stop when hidden, the download size limit, chunked writes, pairing codes; a release script. Not yet run on an iPhone.
 - 2026-10-21: Desktop sync implemented (phase 2): vault adapter, IndexedDB state, connect and pull-only join, rails, verify. `minAppVersion` raised to 1.13.2; deletes follow the user's deletion setting; desktop does not pause when hidden ([decision](../decisions/2026-10-21-desktop-plugin-choices.md)).
 - 2026-10-20: Plugin shell scaffolded; build and distribution rules recorded.
 - 2026-10-20: iPhone probe results added to Lifecycle and Platform.

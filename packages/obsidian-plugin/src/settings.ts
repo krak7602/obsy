@@ -36,6 +36,11 @@ export interface DeviceSettings {
   mode: SyncMode;
   /** Automatic sync is on (the default) or paused by the user or a safety rail. */
   autoSync: boolean;
+  /**
+   * The largest file, in MB, that this device takes on; 0 for no limit.
+   * Default 50 on mobile, 0 on desktop. See `SyncEngineOptions.maxFileSize`.
+   */
+  maxFileSizeMB: number;
 }
 
 export const DEFAULT_SETTINGS: ObsySettings = {
@@ -103,7 +108,19 @@ export function normaliseDevice(raw: unknown, fresh: () => DeviceSettings): Devi
         : base.deviceName,
     mode: mode === 'pull-only' || mode === 'full' ? mode : 'off',
     autoSync: data['autoSync'] !== false,
+    maxFileSizeMB: maxFileSizeMB(data['maxFileSizeMB'], base.maxFileSizeMB),
   };
+}
+
+/** A size limit in MB: a whole number from 0 (no limit) to 10,000. */
+export function maxFileSizeMB(value: unknown, fallback: number): number {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 10_000 ? n : fallback;
+}
+
+/** The engine's `maxFileSize` in bytes, or undefined for no limit. */
+export function maxFileSizeBytes(device: DeviceSettings): number | undefined {
+  return device.maxFileSizeMB > 0 ? device.maxFileSizeMB * 1024 * 1024 : undefined;
 }
 
 /** What is missing before the plugin can reach the bucket, or an empty list. */

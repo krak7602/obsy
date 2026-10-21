@@ -14,15 +14,21 @@ import { ObsidianVaultPort } from './sync/obsidian-port';
 import { SyncScheduler } from './sync/scheduler';
 import { SyncService, type SyncStatus } from './sync/service';
 import { VaultLocalFiles } from './sync/vault-files';
+import { PAIRING_ACTION } from './pairing';
 import { createRequestUrlFetch } from './transport/request-url-fetch';
 import { VerifyModal, ask } from './ui/modals';
+import { JoinWithCodeModal, PairingCodeModal } from './ui/pairing-modals';
 import { ObsySettingTab } from './ui/settings-tab';
 
 const DEVICE_KEY = 'obsy-device';
 /** Sync this long after the last edit. */
 const EDIT_DELAY_MS = 2000;
-/** Sync this often while Obsidian is visible. */
+/** Sync this often (on mobile, only while Obsidian is visible). */
 const POLL_MS = 30_000;
+/** On mobile, files larger than this are written in pieces of this size. */
+const MOBILE_CHUNK_BYTES = 4 * 1024 * 1024;
+/** On mobile, the default size limit in MB. */
+const MOBILE_MAX_FILE_MB = 50;
 
 function randomId(bytes: number): string {
   const values = crypto.getRandomValues(new Uint8Array(bytes));
@@ -36,12 +42,20 @@ function defaultDeviceName(): string {
 
 export default class ObsyPlugin extends Plugin {
   config: ObsySettings = normaliseSettings({});
-  device: DeviceSettings = { localId: '', deviceName: '', mode: 'off', autoSync: true };
+  device: DeviceSettings = {
+    localId: '',
+    deviceName: '',
+    mode: 'off',
+    autoSync: true,
+    maxFileSizeMB: 0,
+  };
   service!: SyncService;
   #scheduler!: SyncScheduler;
   #files!: VaultLocalFiles;
   #kv: IdbKeyValue | null = null;
   #statusBar: HTMLElement | null = null;
+  /** Set while a mobile app is hidden: a running sync stops at the next safe point. */
+  #stopRequested = false;
 
   override async onload(): Promise<void> {
     this.config = normaliseSettings(await this.loadData());
@@ -50,11 +64,15 @@ export default class ObsyPlugin extends Plugin {
       deviceName: defaultDeviceName(),
       mode: 'off',
       autoSync: true,
+      maxFileSizeMB: Platform.isMobileApp ? MOBILE_MAX_FILE_MB : 0,
     }));
     this.app.saveLocalStorage(DEVICE_KEY, this.device);
 
     const port = new ObsidianVaultPort(this.app);
-    this.#files = new VaultLocalFiles(port);
+    this.#files = new VaultLocalFiles(
+      port,
+      Platform.isMobileApp ? { chunkBytes: MOBILE_CHUNK_BYTES } : {},
+    );
     this.#kv = await IdbKeyValue.open();
     const store = new IdbStateStore(this.#kv, this.device.localId);
     this.#files.importHashes(await store.loadHashes());
@@ -69,6 +87,9 @@ export default class ObsyPlugin extends Plugin {
       store,
       env: webEnvironment(),
       saveOpenNotes: () => port.saveOpenNotes(),
+      credentials: () => this.#credentials(),
+      storeCredentials: (credentials) => this.#storeCredentials(credentials),
+      stopRequested: () => this.#stopRequested,
       ask: (question) => ask(this.app, question),
       notify: (message) => {
         new Notice(message);
@@ -104,6 +125,29 @@ export default class ObsyPlugin extends Plugin {
         if (this.device.autoSync) this.#scheduler.request(0);
       },
     });
+    this.addCommand({
+      id: 'pair-device',
+      name: 'Pair another device',
+      checkCallback: (checking) => {
+        if (this.device.mode === 'off') return false;
+        if (!checking) this.showPairingCode();
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'join-with-code',
+      name: 'Join with a pairing code',
+      checkCallback: (checking) => {
+        if (this.device.mode !== 'off') return false;
+        if (!checking) this.joinWithCode();
+        return true;
+      },
+    });
+    // A pairing QR code holds an obsidian://obsy-pair link.
+    this.registerObsidianProtocolHandler(PAIRING_ACTION, (params) => {
+      const code = params['code'];
+      if (typeof code === 'string') this.joinWithCode(code);
+    });
     this.service.refreshStatus();
 
     this.app.workspace.onLayoutReady(() => void this.#start());
@@ -127,9 +171,12 @@ export default class ObsyPlugin extends Plugin {
     const mobile = Platform.isMobileApp;
     this.registerDomEvent(document, 'visibilitychange', () => {
       if (document.visibilityState === 'visible') {
+        this.#stopRequested = false;
         this.#scheduler.resume();
         this.#scheduler.request(0);
       } else if (mobile) {
+        // A running sync stops at its next safe point; nothing new starts.
+        this.#stopRequested = true;
         this.#scheduler.pause();
       }
     });
@@ -146,7 +193,7 @@ export default class ObsyPlugin extends Plugin {
     this.#kv?.close();
   }
 
-  #storage(): S3Storage {
+  #credentials(): { accessKeyId: string; secretAccessKey: string } {
     const secrets = this.app.secretStorage;
     const accessKeyId = secrets.getSecret(this.config.accessKeyIdSecret);
     const secretAccessKey = secrets.getSecret(this.config.secretAccessKeySecret);
@@ -158,6 +205,28 @@ export default class ObsyPlugin extends Plugin {
     ) {
       throw new Error('A credential secret is empty or missing in secret storage.');
     }
+    return { accessKeyId, secretAccessKey };
+  }
+
+  /**
+   * Stores credentials under names unique to this vault and device: on
+   * mobile, secrets with the same name may be shared across vaults.
+   */
+  #storeCredentials(credentials: { accessKeyId: string; secretAccessKey: string }): {
+    accessKeyIdSecret: string;
+    secretAccessKeySecret: string;
+  } {
+    const names = {
+      accessKeyIdSecret: `obsy-${this.device.localId}-access-key-id`,
+      secretAccessKeySecret: `obsy-${this.device.localId}-secret-access-key`,
+    };
+    this.app.secretStorage.setSecret(names.accessKeyIdSecret, credentials.accessKeyId);
+    this.app.secretStorage.setSecret(names.secretAccessKeySecret, credentials.secretAccessKey);
+    return names;
+  }
+
+  #storage(): S3Storage {
+    const { accessKeyId, secretAccessKey } = this.#credentials();
     return new S3Storage({
       endpoint: this.config.endpoint,
       bucket: this.config.bucket,
@@ -201,6 +270,18 @@ export default class ObsyPlugin extends Plugin {
     } catch (error) {
       new Notice(`Obsy: verify failed. ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  showPairingCode(): void {
+    try {
+      new PairingCodeModal(this.app, this.service.pairingCode()).open();
+    } catch (error) {
+      new Notice(`Obsy: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  joinWithCode(code = ''): void {
+    new JoinWithCodeModal(this.app, (value) => this.service.joinWithCode(value), code).open();
   }
 
   async saveSettings(settings: ObsySettings): Promise<void> {

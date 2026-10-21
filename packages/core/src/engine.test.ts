@@ -2,7 +2,7 @@ import { decodeUtf8Strict, encodeUtf8, type Storage } from '@obsy/protocol';
 import { MemoryStorage } from '@obsy/storage-testkit';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { SafetyRailError, SyncEngine, type SafetyRails } from './engine';
+import { SafetyRailError, SyncEngine, SyncStopped, type SafetyRails } from './engine';
 import type { DeviceState, StateStore } from './host';
 import { MemoryLocalFiles, MemoryStateStore, SeededEnvironment } from './memory';
 import { initVault } from './vault';
@@ -409,7 +409,7 @@ describe('verifyLocal', () => {
     await write(mac.files, 'd.md', 'd\n');
     await syncAll(devices);
     const clean = await verifyLocal(storage, env, mac.files);
-    expect(clean).toEqual({ seq: 1, headFiles: 4, localFiles: 4, problems: [] });
+    expect(clean).toEqual({ seq: 1, headFiles: 4, localFiles: 4, problems: [], skipped: 0 });
 
     mac.files.userRemove('a.md');
     await write(mac.files, 'b.md', 'changed\n');
@@ -423,5 +423,122 @@ describe('verifyLocal', () => {
       { path: 'c.md', problem: 'path' },
       { path: 'e.md', problem: 'extra' },
     ]);
+  });
+});
+
+describe('SyncEngine size limit', () => {
+  async function capped(
+    max: number,
+  ): Promise<{ storage: Storage; env: SeededEnvironment; mac: Device; phone: Device }> {
+    const storage = new MemoryStorage();
+    const env = new SeededEnvironment(9);
+    await initVault(storage, env);
+    const make = (name: string, maxFileSize?: number): Device => {
+      const files = new MemoryLocalFiles();
+      const engine = new SyncEngine({
+        storage,
+        local: files,
+        state: new MemoryStateStore(),
+        env,
+        actorId: name,
+        deviceName: name,
+        ...(maxFileSize === undefined ? {} : { maxFileSize }),
+      });
+      return { files, engine };
+    };
+    return { storage, env, mac: make('mac'), phone: make('phone', max) };
+  }
+
+  it('does not download a new file over the limit, but sends its own', async () => {
+    const { storage, env, mac, phone } = await capped(10);
+    await write(mac.files, 'small.md', 'tiny\n');
+    await write(mac.files, 'big.md', 'x'.repeat(50));
+    await mac.engine.sync();
+    await write(phone.files, 'local-big.md', 'y'.repeat(50));
+    const report = await phone.engine.sync();
+    expect(report).toMatchObject({ settled: true, skipped: 1 });
+    expect(paths(phone.files)).toEqual(['local-big.md', 'small.md']);
+    await mac.engine.sync();
+    expect(paths(mac.files)).toEqual(['big.md', 'local-big.md', 'small.md']);
+    const verify = await verifyLocal(storage, env, phone.files, { maxFileSize: 10 });
+    expect(verify).toMatchObject({ problems: [], skipped: 1 });
+  });
+
+  it('keeps syncing a file it holds after it grows over the limit', async () => {
+    const { mac, phone } = await capped(10);
+    await write(mac.files, 'a.md', 'one\n');
+    await mac.engine.sync();
+    await phone.engine.sync();
+    await write(mac.files, 'a.md', 'one\n' + 'x'.repeat(40) + '\n');
+    await mac.engine.sync();
+    await phone.engine.sync();
+    expect(text(phone.files, 'a.md')).toBe('one\n' + 'x'.repeat(40) + '\n');
+    await write(phone.files, 'a.md', 'one\n' + 'x'.repeat(40) + '\nphone\n');
+    await phone.engine.sync();
+    await mac.engine.sync();
+    expect(text(mac.files, 'a.md')).toContain('phone');
+  });
+
+  it('moves a local file away from the path of a skipped head file, and sends it', async () => {
+    const { mac, phone } = await capped(10);
+    await write(mac.files, 'n.md', 'x'.repeat(50));
+    await mac.engine.sync();
+    await write(phone.files, 'n.md', 'mine\n');
+    expect((await phone.engine.sync()).skipped).toBe(1);
+    expect(paths(phone.files)).toEqual(['n (conflict phone 202610200900).md']);
+    await mac.engine.sync();
+    expect(paths(mac.files)).toEqual(['n (conflict phone 202610200900).md', 'n.md']);
+    expect(text(mac.files, 'n (conflict phone 202610200900).md')).toBe('mine\n');
+    // Once the head file is small, the phone downloads it.
+    await write(mac.files, 'n.md', 'mac\n');
+    await mac.engine.sync();
+    await phone.engine.sync();
+    expect(paths(phone.files)).toEqual(paths(mac.files));
+  });
+
+  it('moves a large local file out of the way when the head needs its path', async () => {
+    const { mac, phone } = await capped(10);
+    await write(mac.files, 'a.md', 'a\n');
+    await mac.engine.sync();
+    await phone.engine.sync();
+    await write(phone.files, 'b.md', 'y'.repeat(50));
+    mac.files.userMove('a.md', 'b.md');
+    await mac.engine.sync();
+    await phone.engine.sync();
+    expect(paths(phone.files)).toEqual(['b (conflict phone 202610200900).md', 'b.md']);
+    expect(text(phone.files, 'b.md')).toBe('a\n');
+    expect(text(phone.files, 'b (conflict phone 202610200900).md')).toBe('y'.repeat(50));
+  });
+});
+
+describe('SyncEngine stop', () => {
+  it('stops at a safe point and finishes on the next sync', async () => {
+    const { devices } = await setup(['mac', 'phone']);
+    const [mac, phone] = devices as [Device, Device];
+    for (let i = 0; i < 5; i++) await write(mac.files, `n${i}.md`, `${i}\n`);
+    await mac.engine.sync();
+    let downloads = 0;
+    await expect(phone.engine.sync({ shouldStop: () => ++downloads > 3 })).rejects.toBeInstanceOf(
+      SyncStopped,
+    );
+    expect(paths(phone.files).length).toBeLessThan(5);
+    expect((await phone.engine.sync()).settled).toBe(true);
+    expect(paths(phone.files)).toHaveLength(5);
+  });
+
+  it('stops before a claim and sends the commit on the next sync', async () => {
+    const { storage, devices } = await setup(['mac']);
+    const [mac] = devices as [Device];
+    await write(mac.files, 'a.md', 'a\n');
+    // Checks: the pass, the upload, then the claim.
+    let checks = 0;
+    await expect(mac.engine.sync({ shouldStop: () => ++checks === 3 })).rejects.toBeInstanceOf(
+      SyncStopped,
+    );
+    expect(checks).toBe(3);
+    expect(await logLength(storage)).toBe(0);
+    expect((await storage.list('blobs/')).keys).toHaveLength(1);
+    await mac.engine.sync();
+    expect(await logLength(storage)).toBe(1);
   });
 });

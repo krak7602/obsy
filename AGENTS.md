@@ -1,6 +1,6 @@
 # Working in this repository
 
-obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done. `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (desktop sync; not released) exist.
+obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 in progress (iPhone test and release pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (desktop sync; not released) exist.
 
 ## Hard rules
 
@@ -37,7 +37,7 @@ Read [README.md](README.md) for the repository entry point. Then select the rele
 | Bucket layout, records, commits, the sync engine, the change feed, checkpoints, GC, or recovery | [Protocol and core](docs/subsystems/protocol.md), then [bucket decision](docs/decisions/2026-10-19-bucket-as-sequencer.md) |
 | The `Storage` interface, a provider adapter, or the conformance suite | [Storage adapters](docs/subsystems/storage.md), then [conformance runbook](docs/runbooks/storage-conformance.md), [storage spike](docs/learning/storage-spike.md), and [R2 binding live run](docs/learning/r2-binding-live.md) |
 | Merging, conflict copies, or deletes | [Merge and conflicts](docs/subsystems/merge.md), then [merge diff](docs/learning/merge-diff.md), [merge spike](docs/learning/merge-spike.md), and [merge decision](docs/decisions/2026-10-19-three-way-merge-not-crdt.md) |
-| The Obsidian plugin, iOS behavior, or the Obsidian API | [Obsidian plugin](docs/subsystems/obsidian-plugin.md), then [desktop plugin test](docs/runbooks/desktop-plugin-test.md), [phase 2 results](docs/learning/desktop-plugin-phase2.md), and [platform notes](docs/learning/research-notes/obsidian-platform.md) |
+| The Obsidian plugin, iOS behavior, or the Obsidian API | [Obsidian plugin](docs/subsystems/obsidian-plugin.md), then [desktop plugin test](docs/runbooks/desktop-plugin-test.md), [iPhone sync test](docs/runbooks/iphone-sync-test.md), [plugin release](docs/runbooks/plugin-release.md), [phase 2 results](docs/learning/desktop-plugin-phase2.md), [phase 3 results](docs/learning/mobile-sync-phase3.md), and [platform notes](docs/learning/research-notes/obsidian-platform.md) |
 | The platform probe or iPhone measurements | [Platform probe](docs/runbooks/platform-probe.md), then [iPhone probe results](docs/learning/iphone-probe.md) |
 | Agent operations or the `obsy` CLI | [Agent SDK and CLI](docs/subsystems/agent-sdk.md) |
 | The optional Cloudflare relay | [Relay](docs/subsystems/relay.md), then [Cloudflare notes](docs/learning/research-notes/cloudflare-building-blocks.md) |
