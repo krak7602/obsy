@@ -34,7 +34,7 @@ Run these from the repository root.
 | `pnpm --filter @obsy/cli run build` | Build the `obsy` command into `packages/cli/dist/obsy.mjs` ([CLI](cli.md)) |
 | `pnpm --filter @obsy/obsidian-plugin run release <version>` | Prepare plugin release files; publishes only with `--publish` ([plugin release](plugin-release.md)) |
 
-Run `check`, `test`, and `build` before you report a change as done.
+Run `check`, `test`, and `build` before you report a change as done. `.github/workflows/ci.yml` runs the same three on GitHub for pushes to `main` and for pull requests.
 
 For one package, run its script with a filter, for example `pnpm --filter @obsy/obsidian-plugin run dev` to rebuild the plugin on change with inline sourcemaps.
 

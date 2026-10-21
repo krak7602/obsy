@@ -30,6 +30,19 @@ Status: design accepted; phases 1 to 4 built. The protocol, the merge, and the s
 
 Version 1 is not end-to-end encrypted: whoever controls the bucket can read the notes, and a server-side agent needs to read them too. Use a private bucket and credentials scoped to it. Encrypted folders that agents cannot read are planned for later. See [SECURITY.md](SECURITY.md).
 
+## Try it
+
+obsy is early software with no release yet. Try it only on a **copy** of a vault, with a bucket that holds nothing else, and never on a vault that another sync service (Obsidian Sync, iCloud, Syncthing, and so on) also syncs.
+
+```sh
+mise install && pnpm install   # Node 24 and pnpm 12, from mise.toml
+pnpm run build                 # the plugin, the obsy command, and the libraries
+```
+
+- **Obsidian plugin.** Copy `packages/obsidian-plugin/dist/main.js`, `packages/obsidian-plugin/dist/styles.css`, and the root `manifest.json` into `<vault>/.obsidian/plugins/obsy/`, then turn on **Obsy - Sync Vaults** in **Settings → Community plugins**. Its settings take an S3 endpoint, a bucket, a vault prefix, and a credential kept in Obsidian's secret storage. Other devices join with a pairing code or QR code. Details: [Obsidian plugin](docs/subsystems/obsidian-plugin.md) and [iPhone sync test](docs/runbooks/iphone-sync-test.md).
+- **`obsy` command.** `node packages/cli/dist/obsy.mjs --help`. Keys come from `OBSY_S3_*` variables. See the [CLI runbook](docs/runbooks/cli.md).
+- **Checks.** `pnpm run check`, `pnpm test`, and `pnpm run build` ([development runbook](docs/runbooks/development.md)).
+
 ## Documents
 
 Start with [Architecture](docs/architecture.md). It links to every layer.
@@ -53,7 +66,7 @@ Start with [Architecture](docs/architecture.md). It links to every layer.
 | [Design research](docs/learning/sync-design-research.md) | The evidence, with sources, and [detailed notes](docs/learning/research-notes/) |
 | [Documentation taxonomy](docs/TAXONOMY.md) | How the docs are organised and maintained |
 
-To set up and run the checks, see the [development runbook](docs/runbooks/development.md). Contributors and coding agents: read [AGENTS.md](AGENTS.md).
+To set up and run the checks, see the [development runbook](docs/runbooks/development.md). Contributors: read [CONTRIBUTING.md](CONTRIBUTING.md). Coding agents: read [AGENTS.md](AGENTS.md).
 
 ## Licensing
 
