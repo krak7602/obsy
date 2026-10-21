@@ -1,6 +1,6 @@
 # Working in this repository
 
-obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 in progress (iPhone test and release pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (desktop sync; not released) exist.
+obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 nearly done (iPhone test passed; BRAT release pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (desktop sync; not released) exist.
 
 ## Hard rules
 

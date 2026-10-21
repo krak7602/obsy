@@ -8,7 +8,7 @@ updated: 2026-10-21
 
 ## Current
 
-Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop and in the simulator, not yet on an iPhone ([results](../learning/mobile-sync-phase3.md)). Version 0.1.0 is not released. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
+Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop, in the simulator, and in one iPhone run ([results](../learning/mobile-sync-phase3.md)). Version 0.1.0 is not released. On iOS the status bar is hidden, so the phone shows no sync activity outside the settings. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
 
 The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [relay](relay.md) as a later option. It owns the Obsidian-specific parts: reading and writing vault files safely, durable state, the lifecycle, settings, and the questions that the safety rails ask.
 

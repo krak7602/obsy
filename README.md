@@ -2,7 +2,7 @@
 
 Sync an Obsidian vault through storage you own, and let scripts and AI agents edit the same notes safely.
 
-Status: design accepted; phase 2 done. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) are built and tested on desktop, not yet on an iPhone. Nothing is released.
+Status: design accepted; phase 2 done. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) are built and passed a test on an iPhone. Nothing is released.
 
 ## What it is
 

@@ -8,7 +8,7 @@ updated: 2026-10-21
 
 ## Current
 
-Status: **partial results, 2026-10-21.** The phase 3 parts are built and pass the simulator, unit tests, and the desktop test. They have **not** run on an iPhone; that test is in the [iPhone sync test runbook](../runbooks/iphone-sync-test.md). The plugin is on [Obsidian plugin](../subsystems/obsidian-plugin.md).
+Status: **observed results, 2026-10-21.** The phase 3 parts pass the simulator, unit tests, the desktop test, and one run of the [iPhone sync test](../runbooks/iphone-sync-test.md): all 8 steps passed. No BRAT release exists yet. The plugin is on [Obsidian plugin](../subsystems/obsidian-plugin.md).
 
 ### Question
 
@@ -64,25 +64,49 @@ Final code: three runs with the generated vault and one with a copy of a real va
 | Kill during upload | Obsidian killed as soon as the 24 MiB blob was in the bucket. In the three generated-vault runs, the commit was not yet made; in the vault-copy run, it was. After a restart: the file once, intact, no repeated `opId` |
 | Kill during download | Killed as soon as the temporary file appeared: in one run the temporary file was seen mid-write; in the others the download finished between checks. After a restart: the file once, intact, no temporary file left |
 
+#### iPhone run
+
+One run of the [iPhone sync test](../runbooks/iphone-sync-test.md) on 2026-10-21.
+
+- **Devices.** An iPhone on iOS 27.0.1 (Obsidian version not recorded), with a new vault stored on the phone. The Mac side was a separate Obsidian 1.14.4 instance with its own profile and a scratch vault, driven over the remote debugging port.
+- **Install.** The release files of 0.1.0 were copied into the phone vault's `.obsidian/plugins/obsy/` over USB (Method C in the runbook).
+- **Bucket.** The scratch R2 bucket, a new prefix, and a 30-day token scoped to the bucket.
+- **Pairing.** The phone camera opened the `obsidian://obsy-pair` link from the QR code, and the phone joined pull-only; its files matched the Mac's.
+- **Checks.** Files, sizes, and SHA-256 on the phone were read over USB; the bucket log was read from the Mac side.
+
+| # | Step | Result |
+| --- | --- | --- |
+| 1 | Offline edits: first line on the phone in Airplane Mode, last line on the Mac, and a new note on the phone | Merged on both devices; the new note reached the Mac |
+| 2 | A 29.9 MB video added on the phone, app swiped away about 3 s later | Arrived once, same SHA-256 on both devices; no temporary file; 5 commits, 5 distinct `opId`s |
+| 3 | A 40 MiB file from the Mac, app swiped away about 3 s into the download | Complete on the phone (same SHA-256); no temporary file |
+| 4 | A 45 MiB file from the Mac, app switched to the background about 2 s in, back after 30 s | Complete on the phone (same SHA-256); status "Up to date" |
+| 5 | `Notes/idea.md` on the phone in Airplane Mode, `Notes/Idea.md` on the Mac | Both devices: `Idea.md` with the Mac text and `idea (conflict iphone-… ).md` with the phone text |
+| 6 | `Welcome.md` renamed to `welcome.md` on the phone | Renamed on the Mac; no duplicate |
+| 7 | A 60 MiB file from the Mac, over the phone's 50 MB limit | Not downloaded; **Verify**: no differences, 1 skipped |
+| 8 | Typing in an open note on the phone while the Mac changed another line | The change appeared in the open note; the typing stayed; the cursor did not move |
+
 ### Findings
 
 - **The first size limit could lose content (seed 28784).** It left out large local files too. A synced file that the phone renamed and enlarged in one step looked like a new large file: the engine committed the delete of the old file and held back the new one. The new simulator check found it after 245,000 seeds. The limit now applies only to downloads of files the device does not hold ([decision](../decisions/2026-10-21-pairing-and-size-limit.md)).
 - **A first, weaker check missed a planted bug.** Before the delete-but-kept check, hiding a synced file over the limit failed no seed, because the check allowed the phone to keep large local files. With the check, the same bug failed 1,262 of 2,000 seeds.
 - **A case twin blocked a rename (seed 110).** With the first limit, a synced file renamed onto the path of a skipped head file in another case was never moved out of the way. Such a file now yields to a conflict copy name, as for a download.
 - **Obsidian stores NFD names as NFC.** The desktop test compares names in NFC; macOS keeps the form a file was created with.
+- **The phone shows no sync activity.** Obsidian on iOS hides the status bar, and automatic syncs show no notice, so a user cannot see that a sync runs or failed without opening the settings.
 - **Most kills land before or after the transfer.** A kill 150 ms into the sync found nothing in the bucket; a kill after 400 ms found the sync done. The test now waits for the blob or the temporary file.
 
 ### Limits
 
-- No iPhone run: suspension, iOS kills, the phone's file system, the camera link, and mobile memory are untested.
+- One iPhone run, by hand. The moment of each app kill and background switch was not observable: steps 2 to 4 show the right end state, not that the kill or the pause hit a transfer.
+- NFD names were not tested on the iPhone; the iOS keyboard writes NFC.
 - One Mac, one Obsidian version, one local S3 server.
 - The download kill reached a half-written temporary file once in four runs.
 
 ### Still open
 
-- The [iPhone sync test](../runbooks/iphone-sync-test.md), which needs a scratch bucket that the phone can reach and a way to install the plugin on the phone (a BRAT beta or Method B).
+- A visible sync status on mobile.
 - A BRAT beta release, which needs a GitHub repository ([plugin release](../runbooks/plugin-release.md)).
 
 ## History
 
-- 2026-10-21: Created with the desktop and simulator results; the iPhone run is to come.
+- 2026-10-21: First iPhone run: all 8 steps passed.
+- 2026-10-21: Created with the desktop and simulator results.
