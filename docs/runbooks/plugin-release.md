@@ -10,7 +10,7 @@ updated: 2026-10-21
 
 This page owns how to make a plugin release and a BRAT beta. The rules for releases are on [Obsidian plugin](../subsystems/obsidian-plugin.md#build-and-distribution).
 
-Status: the release script exists. No release has been made, and the repository has no GitHub remote. A release publishes code: make one only when the owner asks for it.
+Status: the release script exists, and the repository is public on GitHub (remote `origin`). No release has been made. A release publishes code: make one only when the owner asks for it.
 
 ### What a release is
 
@@ -37,5 +37,7 @@ This tags the commit, pushes the tag, and creates a pre-release with the three f
 On the device: install **BRAT** from the community plugins, then **BRAT → Add beta plugin** with the repository (`<owner>/<repo>`). BRAT downloads the release files into the vault's `.obsidian/plugins/obsy/`. Turn on **Obsy - Sync Vaults** in **Settings → Community plugins**. A private repository needs a GitHub token in BRAT.
 
 ## History
+
+- 2026-10-21: The repository is on GitHub; still no release.
 
 - 2026-10-21: Created with the release script; version 0.1.0 prepared, not released.

@@ -104,7 +104,7 @@ One run of the [iPhone sync test](../runbooks/iphone-sync-test.md) on 2026-10-21
 ### Still open
 
 - A visible sync status on mobile.
-- A BRAT beta release, which needs a GitHub repository ([plugin release](../runbooks/plugin-release.md)).
+- A BRAT beta release ([plugin release](../runbooks/plugin-release.md)). The repository is on GitHub now.
 
 ## History
 
