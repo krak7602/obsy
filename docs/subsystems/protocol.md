@@ -10,8 +10,8 @@ updated: 2026-10-21
 
 Status:
 
-- **Existing behavior** (phases 1 and 2): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`) with pull-only runs, safety rails, stops at safe points, and a download size limit, bucket access (`RemoteVault`), checkpoints, `verifyLocal`, and a minimal agent writer (`AgentWriter.appendLine`) in `@obsy/core`. The [simulator](../runbooks/simulator.md) checks them.
-- **Accepted design, not implemented:** proposals, presence, device records, GC, the `obsy verify` and `obsy export` commands, restore, and the epoch bump tool.
+- **Existing behavior** (phases 1 to 4): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`) with pull-only runs, safety rails, stops at safe points, and a download size limit, bucket access (`RemoteVault`), checkpoints, and `verifyLocal` in `@obsy/core`; proposals, resolutions, presence, agent writes, undo, and the `obsy verify` and `obsy export` commands in `@obsy/agent` and `@obsy/cli` ([Agent SDK and CLI](agent-sdk.md)). The [simulator](../runbooks/simulator.md) checks them.
+- **Accepted design, not implemented:** device records, GC, vault-wide restore, and the epoch bump tool.
 
 The bucket orders every change by itself. Every writer tries to create the next numbered log entry with a conditional create. Exactly one succeeds; the others re-read, rebase, and retry. The provider requirements for this are on [Storage adapters](storage.md). The reasons are in [The bucket is the sequencer](../decisions/2026-10-19-bucket-as-sequencer.md).
 
@@ -25,9 +25,10 @@ All keys live under a configurable vault prefix.
 | `log/<seq>.json` | Create once | One commit: ordered file operations, author, device, operation ID, time |
 | `blobs/sha256/<hex>` | Create once | File content, addressed by SHA-256 |
 | `checkpoints/<seq>.json` | Create once | Full manifest at `seq`, so new devices need not replay the whole log. Uncompressed in format 1. |
-| `proposals/<id>.json` | Create once | Agent edits that could not be applied safely, for the owner to review |
-| `presence/<device>.json` | Overwrite | Device heartbeat and the note being edited, for agent deferral |
-| `devices/<device>.json` | `If-Match` | Device name, public metadata, last seen cursor |
+| `proposals/<id>.json` | Create once | An agent edit that could not be applied safely, for the owner to review. Its content is a blob |
+| `resolutions/<id>.json` | Create once | The owner's answer to proposal `<id>`: accepted or rejected |
+| `presence/<device>.json` | `If-Match`, by that device only | The note the device's user edits, and when |
+| `devices/<device>.json` | `If-Match` | Device name, public metadata, last seen cursor (not implemented) |
 
 `<seq>` is a zero-padded 16-digit integer, so lexicographic listing is numeric order. The largest sequence number is `Number.MAX_SAFE_INTEGER`.
 
@@ -70,6 +71,23 @@ A commit (`log/<seq>.json`):
 - **Actor** is `device`, `agent`, or `system`, with an ID. Agent commits also record the run and tool-call IDs.
 
 A checkpoint (`{ format, seq, epoch, files }`) maps every `fileId` to `{ path, rev, hash, size, deleted }` at its `seq`. A deleted file stays as a tombstone with its last content hash.
+
+A proposal, its resolution, and a presence record ([Agent SDK and CLI](agent-sdk.md) owns how they are used):
+
+```json
+{ "format": 1, "id": "p_<24 base32>", "createdAt": "2026-10-21T10:00:00.000Z",
+  "actor": { "kind": "agent", "id": "planner", "run": "r1", "toolCall": "t1" },
+  "path": "daily/2026-10-21.md", "fileId": "f_…", "baseRev": 41, "baseHash": "sha256:…",
+  "hash": "sha256:…", "size": 812, "reason": "block-edited", "operation": "replaceBlock",
+  "rationale": "Update the weather block." }
+{ "format": 1, "id": "p_…", "resolvedAt": "…", "actor": { "kind": "device", "id": "mac" },
+  "outcome": "accepted", "seq": 57 }
+{ "format": 1, "device": "mac", "time": "2026-10-21T10:00:00.000Z", "path": "daily/2026-10-21.md" }
+```
+
+- A proposal for a new file has `fileId`, `baseRev`, and `baseHash` all null. `hash` is the whole proposed content. `reason` is one of `requested`, `anchor-missing`, `anchor-ambiguous`, `block-edited`, `not-owned`, `editing`. `operation` is 1 to 64 letters, digits, and `-`. `rationale` is at most 4,000 characters.
+- A resolution's `seq` is the commit that applied an accepted proposal; it is absent when the head already had the content, and on a rejection.
+- A presence `path` is null when the device edits no note. Readers ignore a presence record that does not parse: presence is advisory.
 
 ### Commit rules
 
@@ -124,7 +142,7 @@ Existing behavior. `SyncEngine.sync()` (`packages/core/src/engine.ts`) runs on o
 - **Stops at safe points.** `sync({ shouldStop })` checks `shouldStop` before each pass, each blob download, each upload, and the claim. When it returns true, the engine saves its state and throws `SyncStopped`; the next sync goes on from there. The plugin uses it when iOS is about to suspend the app.
 - **Download size limit** (`SyncEngineOptions.maxFileSize`, off unless set). A head file larger than the limit that the device does not hold yet is not downloaded, and `SyncReport.skipped` counts it. A local file at its path, synced or not, moves to a conflict copy name as it would for a downloaded file, and is sent. Files the device already syncs, and its own files, sync at any size: leaving out a file the device holds could be read as a delete.
 
-`AgentWriter.appendLine(path, line)` is the phase 1 agent operation: read the head, append a line, commit with `baseRev` equal to the head revision, and on a lost claim read the new head and compute again. An agent never merges.
+Agents commit with the same algorithm but hold no local files: each operation reads the head, computes its change, and commits with `baseRev` equal to the head revision; on a lost claim it reads the new head and computes again. An agent never merges. See [Agent SDK and CLI](agent-sdk.md).
 
 ### Reading changes
 
@@ -134,18 +152,20 @@ Polling is the default: on launch, on returning to the foreground, after a local
 
 ### Checkpoints and compaction
 
-Any client may write `checkpoints/<seq>.json.gz` after applying `seq`; creation is idempotent. Log entries older than the retention window (a vault setting, default 180 days) and older than a checkpoint may be deleted by an explicit `obsy gc` run, never by the plugin. GC also removes blobs unreferenced by any retained revision, after the soft-delete delay (default 30 days). A device offline longer than the log retention reconciles from the newest checkpoint and treats files whose hashes match tombstones as already deleted rather than new. The defaults and the reasons are in [Retention defaults](../decisions/2026-10-19-retention-defaults.md).
+Any client may write `checkpoints/<seq>.json` after applying `seq`; creation is idempotent. Devices and agents write one after their own commit whose `seq` is a multiple of 500. Log entries older than the retention window (a vault setting, default 180 days) and older than a checkpoint may be deleted by an explicit `obsy gc` run, never by the plugin. GC also removes blobs unreferenced by any retained revision or open proposal, after the soft-delete delay (default 30 days). A device offline longer than the log retention reconciles from the newest checkpoint and treats files whose hashes match tombstones as already deleted rather than new. The defaults and the reasons are in [Retention defaults](../decisions/2026-10-19-retention-defaults.md).
 
 ### Integrity and recovery
 
 - Every blob is verified against its SHA-256 when written and read.
-- `verifyLocal(storage, env, local)` (existing behavior) reads the head from the newest checkpoint and the log, and compares every local file with it: missing files, extra files, content differences, and paths that differ only in case or Unicode form. With `maxFileSize`, head files over the limit that are not on the device are counted as skipped, not missing. It changes nothing. The plugin's **Verify** uses it; the `obsy verify` command will too.
+- `verifyLocal(storage, env, local)` (existing behavior) reads the head from the newest checkpoint and the log, and compares every local file with it: missing files, extra files, content differences, and paths that differ only in case or Unicode form. With `maxFileSize`, head files over the limit that are not on the device are counted as skipped, not missing. It changes nothing. The plugin's **Verify** and `obsy verify <folder>` use it.
 - History is the log plus immutable blobs. Restoring a file or the whole vault to an earlier `seq` writes new commits; nothing is rewritten.
 - `vault.json` `epoch` is bumped after any out-of-band repair, forcing every device to reconcile by hash.
-- `obsy export` writes a plain folder copy of any `seq` to another location, so recovery never depends on obsy itself.
+- `obsy export <folder> --seq <n>` (existing behavior) writes a plain folder copy of any `seq` into a new, empty folder, so recovery never depends on obsy itself.
+- `obsy undo <seq>` (existing behavior) reverses one commit with a new commit ([undo](agent-sdk.md#undo)).
 
 ## History
 
+- 2026-10-21: Proposal, resolution, and presence records added; agents write through `@obsy/agent`, which replaced `AgentWriter`.
 - 2026-10-21: Stops at safe points and a download size limit added for mobile (phase 3).
 - 2026-10-21: Pull-only runs, safety rails, and `verifyLocal` added for the desktop plugin; text decoding keeps a byte order mark.
 - 2026-10-20: Records, commit rules, and the sync engine implemented in phase 1. Checkpoints are uncompressed JSON in format 1. Every op's `baseRev` must equal the current revision; path keys are checked per commit.

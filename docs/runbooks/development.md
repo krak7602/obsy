@@ -31,6 +31,7 @@ Run these from the repository root.
 | `pnpm run test:r2-live` | Storage conformance of the R2 binding adapter through a temporary test Worker ([storage conformance](storage-conformance.md#live-r2-binding-run)) |
 | `pnpm run test:desktop` | The plugin in a real Obsidian desktop app against a local S3 server in Docker ([desktop plugin test](desktop-plugin-test.md)) |
 | `pnpm run build` | Build every package (`vp run` over `packages/*`) |
+| `pnpm --filter @obsy/cli run build` | Build the `obsy` command into `packages/cli/dist/obsy.mjs` ([CLI](cli.md)) |
 | `pnpm --filter @obsy/obsidian-plugin run release <version>` | Prepare plugin release files; publishes only with `--publish` ([plugin release](plugin-release.md)) |
 
 Run `check`, `test`, and `build` before you report a change as done.

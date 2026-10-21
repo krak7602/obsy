@@ -2,7 +2,7 @@
 
 Sync an Obsidian vault through storage you own, and let scripts and AI agents edit the same notes safely.
 
-Status: design accepted; phase 2 done. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) are built and passed a test on an iPhone. Nothing is released.
+Status: design accepted; phases 1 to 4 built. The protocol, the merge, and the sync engine exist and pass a deterministic simulator. The Obsidian plugin syncs on desktop: it passed a test in Obsidian 1.14.4 on macOS with a copy of a real vault. The phase 3 parts for the iPhone (pairing by QR code, a download size limit, stopping safely when iOS hides the app) passed a test on an iPhone. The agent SDK and the `obsy` command (phase 4) passed the simulator and a test next to a person typing in Obsidian. Nothing is released.
 
 ## What it is
 
@@ -21,7 +21,8 @@ Status: design accepted; phase 2 done. The protocol, the merge, and the sync eng
 | `@obsy/merge` | Markdown-aware three-way merge |
 | `@obsy/core` | Sync engine shared by every client |
 | `@obsy/storage-s3`, `@obsy/storage-r2` | Storage adapters |
-| `@obsy/agent` | Safe edit operations and the `obsy` CLI |
+| `@obsy/agent` | Safe edit operations, proposals, presence, and undo |
+| `@obsy/cli` | The `obsy` command |
 | `obsy` plugin | Obsidian integration |
 | `@obsy/relay` | Optional push and device-token relay on Cloudflare |
 
@@ -45,8 +46,9 @@ Start with [Architecture](docs/architecture.md). It links to every layer.
 | [Relay](docs/subsystems/relay.md) | Optional push and device tokens |
 | [Correctness and testing](docs/concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Development](docs/runbooks/development.md) | Setup, commands, repository layout |
+| [CLI](docs/runbooks/cli.md) | Building and running the `obsy` command |
 | [Storage conformance](docs/runbooks/storage-conformance.md), [merge corpus](docs/runbooks/merge-corpus.md), [simulator](docs/runbooks/simulator.md), and [platform probe](docs/runbooks/platform-probe.md) | Running the storage, merge, and simulator test runs, and measuring `requestUrl`, hashing, IndexedDB, and `SecretStorage` on an iPhone |
-| [Phase results](docs/roadmap.md#build-phases) | The [storage spike](docs/learning/storage-spike.md), the [merge spike](docs/learning/merge-spike.md) and [merge diff](docs/learning/merge-diff.md), the [iPhone probe](docs/learning/iphone-probe.md), the [phase 1 simulator](docs/learning/simulator-phase1.md), the [R2 binding live run](docs/learning/r2-binding-live.md), the [phase 2 desktop plugin](docs/learning/desktop-plugin-phase2.md), and [phase 3 mobile sync](docs/learning/mobile-sync-phase3.md) |
+| [Phase results](docs/roadmap.md#build-phases) | The [storage spike](docs/learning/storage-spike.md), the [merge spike](docs/learning/merge-spike.md) and [merge diff](docs/learning/merge-diff.md), the [iPhone probe](docs/learning/iphone-probe.md), the [phase 1 simulator](docs/learning/simulator-phase1.md), the [R2 binding live run](docs/learning/r2-binding-live.md), the [phase 2 desktop plugin](docs/learning/desktop-plugin-phase2.md), [phase 3 mobile sync](docs/learning/mobile-sync-phase3.md), and the [phase 4 agent SDK](docs/learning/agent-sdk-phase4.md) |
 | [Decisions](docs/decisions/) | Why each major choice was made |
 | [Design research](docs/learning/sync-design-research.md) | The evidence, with sources, and [detailed notes](docs/learning/research-notes/) |
 | [Documentation taxonomy](docs/TAXONOMY.md) | How the docs are organised and maintained |

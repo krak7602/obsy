@@ -1,6 +1,6 @@
 # Working in this repository
 
-obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 nearly done (iPhone test passed; BRAT release pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (desktop sync; not released) exist.
+obsy syncs an Obsidian vault through storage the user owns, and lets scripts and AI agents edit the same notes safely. Status: design accepted; phase 2 done; phase 3 nearly done (iPhone test passed; BRAT release pending); phase 4 built (agent SDK and CLI; moving an existing agent onto it is pending). `@obsy/protocol`, `@obsy/merge`, `@obsy/core` (sync engine), `@obsy/agent` (agent SDK), `@obsy/cli` (`obsy` command), `@obsy/storage-s3`, `@obsy/storage-r2`, `@obsy/storage-testkit`, `@obsy/simulator`, and the Obsidian plugin (not released) exist.
 
 ## Hard rules
 
@@ -18,7 +18,7 @@ obsy syncs an Obsidian vault through storage the user owns, and lets scripts and
 - Delegate substantial independent work with clear ownership, constraints, and acceptance checks. Handle small or tightly coupled changes directly.
 - Use clear, direct English inspired by ASD-STE100, with roughly 80% adherence. Prefer short sentences, consistent terms, and explicit actions. Keep exact technical names.
 - Reuse existing patterns. Check the affected callers and contracts before changing behavior.
-- Keep `@obsy/protocol`, `@obsy/merge`, and `@obsy/core` free of Node and DOM APIs. They must run in Obsidian (desktop and iOS), Node, and Workers.
+- Keep `@obsy/protocol`, `@obsy/merge`, `@obsy/core`, and `@obsy/agent` free of Node and DOM APIs. They must run in Obsidian (desktop and iOS), Node, and Workers.
 - Protect the [correctness invariants](docs/concepts/correctness-and-testing.md). A change to the protocol, merge, or commit path needs simulator or property-test evidence, not only example tests.
 - Verify the changed behavior with an appropriate real command or scenario. For documentation-only work, check structure, links, and navigation. Report only checks that ran.
 - Update affected documentation with the change. Keep temporary probes and work transcripts out of maintained documentation.
@@ -39,7 +39,7 @@ Read [README.md](README.md) for the repository entry point. Then select the rele
 | Merging, conflict copies, or deletes | [Merge and conflicts](docs/subsystems/merge.md), then [merge diff](docs/learning/merge-diff.md), [merge spike](docs/learning/merge-spike.md), and [merge decision](docs/decisions/2026-10-19-three-way-merge-not-crdt.md) |
 | The Obsidian plugin, iOS behavior, or the Obsidian API | [Obsidian plugin](docs/subsystems/obsidian-plugin.md), then [desktop plugin test](docs/runbooks/desktop-plugin-test.md), [iPhone sync test](docs/runbooks/iphone-sync-test.md), [plugin release](docs/runbooks/plugin-release.md), [phase 2 results](docs/learning/desktop-plugin-phase2.md), [phase 3 results](docs/learning/mobile-sync-phase3.md), and [platform notes](docs/learning/research-notes/obsidian-platform.md) |
 | The platform probe or iPhone measurements | [Platform probe](docs/runbooks/platform-probe.md), then [iPhone probe results](docs/learning/iphone-probe.md) |
-| Agent operations or the `obsy` CLI | [Agent SDK and CLI](docs/subsystems/agent-sdk.md) |
+| Agent operations, proposals, presence, undo, or the `obsy` CLI | [Agent SDK and CLI](docs/subsystems/agent-sdk.md), then [CLI runbook](docs/runbooks/cli.md), [agent SDK choices](docs/decisions/2026-10-21-agent-sdk-choices.md), and [phase 4 results](docs/learning/agent-sdk-phase4.md) |
 | The optional Cloudflare relay | [Relay](docs/subsystems/relay.md), then [Cloudflare notes](docs/learning/research-notes/cloudflare-building-blocks.md) |
 | Tests, the simulator, or invariants | [Correctness and testing](docs/concepts/correctness-and-testing.md), then [simulator runbook](docs/runbooks/simulator.md) and [merge corpus runbook](docs/runbooks/merge-corpus.md) |
 | Encryption or security claims | [Server-trusted v1](docs/decisions/2026-10-19-server-trusted-v1.md) |

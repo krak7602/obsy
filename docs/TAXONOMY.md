@@ -41,7 +41,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Storage adapters](subsystems/storage.md) | `Storage` interface, provider requirements, conformance suite |
 | [Merge and conflicts](subsystems/merge.md) | Three-way merge rules, conflict copies, deletes |
 | [Obsidian plugin](subsystems/obsidian-plugin.md) | Lifecycle, change detection, apply, rails, credentials, pairing |
-| [Agent SDK and CLI](subsystems/agent-sdk.md) | Agent operations, owned blocks, provenance, CLI commands |
+| [Agent SDK and CLI](subsystems/agent-sdk.md) | Agent operations, anchors, owned blocks, proposals, presence, provenance, limits, undo, CLI commands |
 | [Relay](subsystems/relay.md) | Optional push, device tokens, presence |
 | [Development](runbooks/development.md) | Setup, commands, repository layout, adding packages |
 | [Storage conformance](runbooks/storage-conformance.md) | Running the conformance suite locally in Docker and against a live bucket |
@@ -50,6 +50,7 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Platform probe](runbooks/platform-probe.md) | Building, installing, and running the iPhone platform probe; sending its report |
 | [iPhone sync test](runbooks/iphone-sync-test.md) | The manual phase 3 test on a Mac and an iPhone |
 | [Plugin release](runbooks/plugin-release.md) | Preparing and publishing a plugin release and a BRAT beta |
+| [CLI](runbooks/cli.md) | Building and running the `obsy` command, its configuration, and exit codes |
 | [Desktop plugin test](runbooks/desktop-plugin-test.md) | Running the plugin in a real Obsidian desktop app against a local S3 server, with scratch vaults or a copy |
 | [Correctness and testing](concepts/correctness-and-testing.md) | Invariants and test strategy |
 | [Clean-room licensing](concepts/clean-room-licensing.md) | What code may and may not be read or reused |
@@ -61,7 +62,8 @@ Create only categories with real content. `diagrams/` does not exist yet; create
 | [Simulator, phase 1](learning/simulator-phase1.md) | One million seeds, bugs found, mutation check (evidence) |
 | [R2 binding live run](learning/r2-binding-live.md) | `@obsy/storage-r2` conformance on real R2 through a test Worker (evidence) |
 | [iPhone probe](learning/iphone-probe.md) | Phase 0 iOS results: `requestUrl`, hashing, IndexedDB, `SecretStorage`, restarts, background (evidence) |
-| [Mobile sync, phase 3](learning/mobile-sync-phase3.md) | Phase 3 results so far: simulator, mutation check, desktop runs; iPhone run pending (evidence) |
+| [Mobile sync, phase 3](learning/mobile-sync-phase3.md) | Phase 3 results: simulator, mutation check, desktop runs, the iPhone run (evidence) |
+| [Agent SDK, phase 4](learning/agent-sdk-phase4.md) | Phase 4 results: property tests, simulator with agents and the owner, mutation checks, the CLI against local S3, the desktop step (evidence) |
 | [Desktop plugin, phase 2](learning/desktop-plugin-phase2.md) | Phase 2 results: adapter tests, simulator, desktop runs on generated vaults and a vault copy, findings (evidence) |
 
 Decision records are in [decisions/](decisions/).

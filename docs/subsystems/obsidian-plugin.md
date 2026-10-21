@@ -8,7 +8,7 @@ updated: 2026-10-21
 
 ## Current
 
-Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop, in the simulator, and in one iPhone run ([results](../learning/mobile-sync-phase3.md)). Version 0.1.0 is not released. On iOS the status bar is hidden, so the phone shows no sync activity outside the settings. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
+Status: **existing behavior**. Desktop sync (phase 2) is tested in Obsidian 1.14.4 on macOS ([results](../learning/desktop-plugin-phase2.md)). The mobile parts (phase 3: stopping when hidden, the size limit, chunked writes, pairing) are implemented and tested on desktop, in the simulator, and in one iPhone run ([results](../learning/mobile-sync-phase3.md)). Presence and the review of agent proposals (phase 4) are tested on desktop ([results](../learning/agent-sdk-phase4.md)). Version 0.1.0 is not released. On iOS the status bar is hidden, so the phone shows no sync activity outside the settings. Plugin ID: `obsy`. Display name: "Obsy - Sync Vaults" (see [Naming](../decisions/2026-10-19-naming.md)).
 
 The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [relay](relay.md) as a later option. It owns the Obsidian-specific parts: reading and writing vault files safely, durable state, the lifecycle, settings, and the questions that the safety rails ask.
 
@@ -19,9 +19,10 @@ The plugin runs `@obsy/core`'s `SyncEngine` over `@obsy/storage-s3`, with the [r
 | Vault adapter | `sync/vault-files.ts` | `VaultLocalFiles`: the engine's `LocalFiles` on the vault, with conditional writes |
 | Obsidian port | `sync/obsidian-port.ts` | `VaultPort` on `app.vault`, `app.fileManager`, and open `MarkdownView` editors |
 | State | `sync/idb-store.ts` | `IdbStateStore`: device state and file hashes in IndexedDB |
-| Service | `sync/service.ts` | Connect, sync runs, verify, and the rail questions; one operation at a time |
+| Service | `sync/service.ts` | Connect, sync runs, verify, the rail questions, presence, and proposals; one operation at a time |
 | Scheduler | `sync/scheduler.ts` | When syncs run: one at a time, debounced after edits |
 | Pairing | `pairing.ts`, `ui/pairing-modals.ts` | Pairing codes, the QR code, and joining with a code |
+| Proposals | `ui/proposals-modal.ts` | The review dialog for agent proposals |
 | Plugin | `main.ts`, `ui/` | Commands, status bar, settings tab, dialogs |
 
 ### Connect and join
@@ -113,9 +114,17 @@ Existing behavior: `createRequestUrlFetch` (`src/transport/request-url-fetch.ts`
 
 Observed on an iPhone (iOS 18.7, Obsidian 1.14.5): the transport passes 20 conformance checks and a conditional-create race over R2; the global `fetch` is blocked without bucket CORS; SHA-256 runs at about 2 GB/s; IndexedDB, `localStorage`, and `SecretStorage` survive an app kill; an IndexedDB transaction does not survive `await crypto.subtle`, so hash first; `navigator.storage.persist()` returns false; `Platform.isMacOS` is true on iOS, so use `isDesktopApp` and `isIosApp`. See [iPhone probe](../learning/iphone-probe.md). The platform evidence is in the [Obsidian platform research notes](../learning/research-notes/obsidian-platform.md).
 
+### Agent proposals and presence
+
+Existing behavior. In full mode only:
+
+- **Presence.** When the user types in a note (`editor-change`), the plugin writes this device's `presence/<device>.json` with the note's path and the time, at most every 30 s per note, one write at a time. Editor changes that the plugin applied itself in the last second do not count. A failed write is not reported. Agents read it to wait or propose instead of changing the note ([deferral](agent-sdk.md#presence-and-deferral)). Pull-only devices write nothing.
+- **Counting proposals.** After a sync, the plugin lists open proposals (two list requests): on a manual sync, and otherwise at most every 5 minutes. A failed check does not fail the sync. When new proposals appear, a notice says how many are open. The settings tab shows the count with a **Review** button.
+- **Review.** **Review agent proposals** (command, or the settings button) shows each open proposal: the path, the agent, why it is a proposal, the rationale, a line diff from its base, and whether the note changed since. **Accept** syncs first (so edits made here are in the bucket), commits the proposal as this device with `VaultAdmin.accept` (merged three-way with later edits), and syncs again to bring it here. A conflict leaves it open. **Reject** stores the answer only.
+
 ### Tests
 
-`pnpm test` runs the adapter against a fake vault (`src/testing/fake-vault.ts`): conditional writes, editor transactions, unsaved edits, temporary files, chunked writes, and 400 random runs of the engine on two devices with user edits that land during syncs (half of them with chunked writes). It also runs the service on fake IndexedDB: connect, rails, pairing, and stops. `pnpm run test:desktop` runs the scenario in a real Obsidian app ([runbook](../runbooks/desktop-plugin-test.md)).
+`pnpm test` runs the adapter against a fake vault (`src/testing/fake-vault.ts`): conditional writes, editor transactions, unsaved edits, temporary files, chunked writes, and 400 random runs of the engine on two devices with user edits that land during syncs (half of them with chunked writes). It also runs the service on fake IndexedDB: connect, rails, pairing, stops, presence writes, and accepting and rejecting proposals. `pnpm run test:desktop` runs the scenario in a real Obsidian app ([runbook](../runbooks/desktop-plugin-test.md)).
 
 ### Build and distribution
 
@@ -125,7 +134,8 @@ The community directory reads `manifest.json` from the root of the default branc
 
 ## History
 
-- 2026-10-21: Mobile parts implemented (phase 3): stop when hidden, the download size limit, chunked writes, pairing codes; a release script. Not yet run on an iPhone.
+- 2026-10-21: Presence while typing, the proposal count, and the review dialog added (phase 4).
+- 2026-10-21: Mobile parts implemented (phase 3): stop when hidden, the download size limit, chunked writes, pairing codes; a release script.
 - 2026-10-21: Desktop sync implemented (phase 2): vault adapter, IndexedDB state, connect and pull-only join, rails, verify. `minAppVersion` raised to 1.13.2; deletes follow the user's deletion setting; desktop does not pause when hidden ([decision](../decisions/2026-10-21-desktop-plugin-choices.md)).
 - 2026-10-20: Plugin shell scaffolded; build and distribution rules recorded.
 - 2026-10-20: iPhone probe results added to Lifecycle and Platform.
