@@ -67,6 +67,10 @@ export class ObsidianVaultPort implements VaultPort {
     await this.app.vault.createBinary(path, toArrayBuffer(bytes));
   }
 
+  async appendBinary(path: string, bytes: Uint8Array): Promise<void> {
+    await this.app.vault.appendBinary(this.#require(path), toArrayBuffer(bytes));
+  }
+
   async rename(from: string, to: string): Promise<void> {
     await this.#ensureParent(to);
     // `vault.rename`, not `fileManager.renameFile`: a remote rename must not

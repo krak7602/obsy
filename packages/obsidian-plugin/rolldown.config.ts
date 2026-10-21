@@ -20,12 +20,24 @@ function probeAssets(): Plugin {
   };
 }
 
+/** Copies the plugin's styles.css next to its main.js. */
+function pluginStyles(): Plugin {
+  return {
+    name: 'obsy-styles',
+    async generateBundle() {
+      const source = await this.fs.readFile('styles.css');
+      this.emitFile({ type: 'asset', fileName: 'styles.css', source });
+    },
+  };
+}
+
 export default defineConfig([
   // The sync plugin. Its manifest is the root manifest.json.
   {
     input: 'src/main.ts',
     external,
     platform: 'browser',
+    plugins: [pluginStyles()],
     output: {
       file: 'dist/main.js',
       format: 'cjs',

@@ -9,13 +9,15 @@
     "build": "rolldown -c rolldown.config.ts",
     "dev": "rolldown -c rolldown.config.ts --watch --sourcemap inline",
     "test:desktop": "bash scripts/desktop-e2e.sh",
+    "release": "bash scripts/release.sh",
     "lint:obsidian": "cd ../.. && eslint --max-warnings 0 --config packages/obsidian-plugin/eslint.config.mjs packages/obsidian-plugin/src manifest.json packages/obsidian-plugin/probe/manifest.json"
   },
   "dependencies": {
     "@obsy/core": "workspace:*",
     "@obsy/protocol": "workspace:*",
     "@obsy/storage-s3": "workspace:*",
-    "@obsy/storage-testkit": "workspace:*"
+    "@obsy/storage-testkit": "workspace:*",
+    "uqr": "catalog:"
   },
   "devDependencies": {
     "@codemirror/state": "catalog:",

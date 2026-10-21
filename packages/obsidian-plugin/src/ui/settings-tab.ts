@@ -2,7 +2,7 @@ import { PluginSettingTab } from 'obsidian';
 import type { App, Setting, SettingDefinitionItem } from 'obsidian';
 
 import type ObsyPlugin from '../main';
-import { normalisePrefix, normaliseSettings } from '../settings';
+import { maxFileSizeMB, normalisePrefix, normaliseSettings } from '../settings';
 
 const SECRET_DESC =
   'Select or create a secret. Only the name of the secret is stored in the plugin settings. Give each vault its own secret names.';
@@ -107,6 +107,11 @@ export class ObsySettingTab extends PluginSettingTab {
             desc: 'Shown in conflict copy names.',
             control: { type: 'text', key: 'deviceName' },
           },
+          {
+            name: 'Largest file on this device',
+            desc: 'In MB; 0 for no limit. Larger files that this device does not have yet are not downloaded. Files it already syncs, and files made here, sync at any size.',
+            control: { type: 'number', key: 'maxFileSizeMB', min: 0, max: 10_000, step: 1 },
+          },
         ],
       },
       {
@@ -119,6 +124,20 @@ export class ObsySettingTab extends PluginSettingTab {
             visible: () => !this.#connected(),
             render: (setting) =>
               this.#button(setting, 'Connect', () => this.plugin.service.connect(), 'cta'),
+          },
+          {
+            name: 'Join with a pairing code',
+            desc: 'Fill in the bucket settings and the credential from a code made by Pair another device, then join in pull-only mode.',
+            visible: () => !this.#connected(),
+            render: (setting) =>
+              this.#button(setting, 'Enter code', () => this.plugin.joinWithCode()),
+          },
+          {
+            name: 'Pair another device',
+            desc: 'Show a QR code and a code that set up another device for this vault. They hold the bucket credential.',
+            visible: () => this.#connected(),
+            render: (setting) =>
+              this.#button(setting, 'Show pairing code', () => this.plugin.showPairingCode()),
           },
           {
             name: 'Pull-only mode',
@@ -164,6 +183,7 @@ export class ObsySettingTab extends PluginSettingTab {
   override getControlValue(key: string): unknown {
     if (key === 'deviceName') return this.plugin.device.deviceName;
     if (key === 'autoSync') return this.plugin.device.autoSync;
+    if (key === 'maxFileSizeMB') return this.plugin.device.maxFileSizeMB;
     return (this.plugin.config as unknown as Record<string, unknown>)[key];
   }
 
@@ -172,6 +192,14 @@ export class ObsySettingTab extends PluginSettingTab {
       if (typeof value === 'string' && value.trim() !== '') {
         this.plugin.saveDevice({ ...this.plugin.device, deviceName: value.trim() });
       }
+      return;
+    }
+    if (key === 'maxFileSizeMB') {
+      const device = this.plugin.device;
+      this.plugin.saveDevice({
+        ...device,
+        maxFileSizeMB: maxFileSizeMB(value, device.maxFileSizeMB),
+      });
       return;
     }
     if (key === 'autoSync') {

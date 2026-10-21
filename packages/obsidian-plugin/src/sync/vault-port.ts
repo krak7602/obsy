@@ -30,6 +30,8 @@ export interface VaultPort {
   modifyBinary(path: string, bytes: Uint8Array): Promise<void>;
   /** Creates a file, and its parent folders when needed. Fails when the path exists. */
   createBinary(path: string, bytes: Uint8Array): Promise<void>;
+  /** Appends to an existing file. */
+  appendBinary(path: string, bytes: Uint8Array): Promise<void>;
   /** Renames a file without updating links, creating parent folders when needed. Fails when the target exists. */
   rename(from: string, to: string): Promise<void>;
   /** Deletes a file as the user's deletion preference says (trash, or permanently). */

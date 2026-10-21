@@ -31,6 +31,7 @@ Run these from the repository root.
 | `pnpm run test:r2-live` | Storage conformance of the R2 binding adapter through a temporary test Worker ([storage conformance](storage-conformance.md#live-r2-binding-run)) |
 | `pnpm run test:desktop` | The plugin in a real Obsidian desktop app against a local S3 server in Docker ([desktop plugin test](desktop-plugin-test.md)) |
 | `pnpm run build` | Build every package (`vp run` over `packages/*`) |
+| `pnpm --filter @obsy/obsidian-plugin run release <version>` | Prepare plugin release files; publishes only with `--publish` ([plugin release](plugin-release.md)) |
 
 Run `check`, `test`, and `build` before you report a change as done.
 
@@ -68,4 +69,4 @@ Update `vite-plus` in the catalog. Then set the `vite` override to the same vers
 
 - 2026-10-20: Workspace scaffolded with pnpm and Vite+ ([decision](../decisions/2026-10-20-toolchain.md)).
 - 2026-10-20: Added the storage conformance commands, source exports for workspace libraries, and the `test/` pattern for integration tests.
-- 2026-10-21: Added the R2 binding and desktop plugin test commands.
+- 2026-10-21: Added the R2 binding and desktop plugin test commands, and the release command.

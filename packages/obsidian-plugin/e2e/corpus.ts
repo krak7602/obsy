@@ -75,6 +75,10 @@ export function generateVault(root: string): void {
   const blob = new Uint8Array(256 * 1024);
   for (let i = 0; i < blob.length; i++) blob[i] = Math.floor(random() * 256);
   write(root, 'Attachments/data.bin', blob);
+  // 3 MiB, over a 1 MB size limit.
+  const big = new Uint8Array(3 * 1024 * 1024);
+  for (let i = 0; i < big.length; i++) big[i] = (blob[i % blob.length] as number) ^ (i >>> 18);
+  write(root, 'Attachments/big.bin', big);
   write(root, 'Welcome.md', '# Welcome\n\nA generated scratch vault for the obsy desktop test.\n');
 }
 
@@ -89,7 +93,11 @@ export function copyVault(from: string, to: string): void {
   });
 }
 
-/** Vault path to SHA-256 hex of every file, without dot paths, as Obsidian indexes them. */
+/**
+ * Vault path to SHA-256 hex of every file, without dot paths, as Obsidian
+ * indexes them. Names are in NFC: macOS treats the NFC and NFD forms of a
+ * name as one name, and keeps whichever form the file was created with.
+ */
 export function readTree(root: string): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (dir: string): void => {
@@ -99,7 +107,7 @@ export function readTree(root: string): Map<string, string> {
       if (statSync(full).isDirectory()) walk(full);
       else
         out.set(
-          relative(root, full).split(sep).join('/'),
+          relative(root, full).split(sep).join('/').normalize('NFC'),
           createHash('sha256').update(readFileSync(full)).digest('hex'),
         );
     }

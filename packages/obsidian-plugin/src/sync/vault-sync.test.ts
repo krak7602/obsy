@@ -35,7 +35,8 @@ async function setup(seed = 1): Promise<{
   const vault = new FakeVault();
   const mac = new SyncEngine({
     storage,
-    local: new VaultLocalFiles(vault),
+    // Even seeds write in tiny pieces, as on mobile, through temporary files.
+    local: new VaultLocalFiles(vault, seed % 2 === 0 ? { chunkBytes: 6 } : {}),
     state: new MemoryStateStore(),
     env,
     actorId: 'mac',

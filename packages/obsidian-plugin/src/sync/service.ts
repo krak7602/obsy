@@ -2,6 +2,7 @@ import {
   RemoteVault,
   SafetyRailError,
   SyncEngine,
+  SyncStopped,
   initVault,
   verifyLocal,
   type Environment,
@@ -11,8 +12,9 @@ import {
 } from '@obsy/core';
 import { ProtocolError, isStorageError, type Storage } from '@obsy/protocol';
 
+import { decodePairingCode, encodePairingCode, type PairingInfo } from '../pairing';
 import type { DeviceSettings, ObsySettings } from '../settings';
-import { actorIdFor, missingSettings } from '../settings';
+import { actorIdFor, maxFileSizeBytes, missingSettings } from '../settings';
 import type { IdbStateStore } from './idb-store';
 import type { VaultLocalFiles } from './vault-files';
 
@@ -29,6 +31,14 @@ export interface SyncStatus {
   readonly lastSync: number | null;
   /** Local changes that a pull-only sync did not send. */
   readonly unsent: number;
+  /** Files left out by this device's size limit. */
+  readonly skipped: number;
+}
+
+/** The two credential values, from SecretStorage. */
+export interface Credentials {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
 }
 
 /** A question for the user, with the label of the button that answers yes. */
@@ -52,6 +62,15 @@ export interface ServiceHost {
   readonly store: IdbStateStore;
   readonly env: Environment;
   saveOpenNotes(): Promise<void>;
+  /** The configured credential values. Throws when a secret is empty or missing. */
+  credentials(): Credentials;
+  /** Stores credentials under this vault's own secret names and returns the names. */
+  storeCredentials(credentials: Credentials): {
+    accessKeyIdSecret: string;
+    secretAccessKeySecret: string;
+  };
+  /** True when a running sync should stop at the next safe point (the app is going to the background). */
+  stopRequested(): boolean;
   ask(question: Question): Promise<boolean>;
   notify(message: string): void;
   status(status: SyncStatus): void;
@@ -83,7 +102,13 @@ function describe(error: unknown): string {
  * that two engines never work on the same state.
  */
 export class SyncService {
-  #status: SyncStatus = { state: 'off', detail: 'Not connected.', lastSync: null, unsent: 0 };
+  #status: SyncStatus = {
+    state: 'off',
+    detail: 'Not connected.',
+    lastSync: null,
+    unsent: 0,
+    skipped: 0,
+  };
   #queue: Promise<unknown> = Promise.resolve();
 
   constructor(readonly host: ServiceHost) {}
@@ -116,6 +141,7 @@ export class SyncService {
 
   #engine(storage: Storage): SyncEngine {
     const device = this.host.device();
+    const maxFileSize = maxFileSizeBytes(device);
     return new SyncEngine({
       storage,
       local: this.host.files,
@@ -124,6 +150,7 @@ export class SyncService {
       actorId: actorIdFor(device.deviceName),
       deviceName: device.deviceName,
       rails: RAILS,
+      ...(maxFileSize === undefined ? {} : { maxFileSize }),
     });
   }
 
@@ -136,7 +163,8 @@ export class SyncService {
     return this.#exclusive(() => this.#connect());
   }
 
-  async #connect(): Promise<void> {
+  /** `expectVaultId`: join only this vault (from a pairing code); never create one. */
+  async #connect(expectVaultId?: string): Promise<void> {
     const missing = missingSettings(this.host.settings());
     if (missing.length > 0) {
       this.host.notify(`Obsy: set ${missing.join(', ')} first.`);
@@ -147,6 +175,13 @@ export class SyncService {
       storage = this.host.storage();
       const existing = await new RemoteVault(storage, this.host.env).getVault();
       let mode: DeviceSettings['mode'] = 'pull-only';
+      if (expectVaultId !== undefined && existing?.vaultId !== expectVaultId) {
+        throw new Error(
+          existing === null
+            ? 'The bucket has no vault at the prefix that the pairing code names.'
+            : 'The bucket prefix holds another vault than the one the pairing code names.',
+        );
+      }
       if (existing !== null) {
         const yes = await this.host.ask({
           title: 'Join the vault in the bucket?',
@@ -194,7 +229,75 @@ export class SyncService {
     this.host.saveDevice({ ...this.host.device(), mode: 'off' });
     await this.host.store.clear();
     await this.host.saveSettings({ ...this.host.settings(), vaultId: null });
-    this.#set('off', 'Not connected.', { unsent: 0 });
+    this.#set('off', 'Not connected.', { unsent: 0, skipped: 0 });
+  }
+
+  /**
+   * A pairing code for another device: the bucket settings, the credential,
+   * and the vault ID. Only while connected. The caller shows it once and
+   * never stores it.
+   */
+  pairingCode(): string {
+    const settings = this.host.settings();
+    if (this.host.device().mode === 'off' || settings.vaultId === null) {
+      throw new Error('Connect and sync this vault first.');
+    }
+    return encodePairingCode({
+      endpoint: settings.endpoint,
+      bucket: settings.bucket,
+      region: settings.region,
+      addressing: settings.addressing,
+      prefix: settings.prefix,
+      ...this.host.credentials(),
+      vaultId: settings.vaultId,
+    });
+  }
+
+  /**
+   * Joins the vault that a pairing code names: asks, stores the credential
+   * under this vault's own secret names, fills in the settings, and joins in
+   * pull-only mode. Only while not connected.
+   */
+  joinWithCode(input: string): Promise<void> {
+    return this.#exclusive(async () => {
+      if (this.host.device().mode !== 'off') {
+        this.host.notify('Obsy: disconnect this vault before you join with a pairing code.');
+        return;
+      }
+      let info: PairingInfo;
+      try {
+        info = decodePairingCode(input);
+      } catch (error) {
+        this.host.notify(`Obsy: ${describe(error)}`);
+        return;
+      }
+      const host = /^https?:\/\/([^/]+)/.exec(info.endpoint)?.[1] ?? info.endpoint;
+      const yes = await this.host.ask({
+        title: 'Join with this pairing code?',
+        lines: [
+          `Bucket ${info.bucket} at ${host}, prefix ${info.prefix === '' ? '(bucket root)' : info.prefix}.`,
+          "obsy stores the credential in this vault's secret storage and fills in the settings. Then it joins in pull-only mode.",
+        ],
+        confirm: 'Use this code',
+        risky: false,
+      });
+      if (!yes) return;
+      const names = this.host.storeCredentials({
+        accessKeyId: info.accessKeyId,
+        secretAccessKey: info.secretAccessKey,
+      });
+      await this.host.saveSettings({
+        ...this.host.settings(),
+        endpoint: info.endpoint,
+        bucket: info.bucket,
+        region: info.region,
+        addressing: info.addressing,
+        prefix: info.prefix,
+        ...names,
+        vaultId: null,
+      });
+      await this.#connect(info.vaultId);
+    });
   }
 
   /** Ends pull-only mode: from now on, local changes are sent. */
@@ -235,10 +338,15 @@ export class SyncService {
       await this.#checkMarker();
       const report = await this.#engine(storage).sync({
         pullOnly: device.mode === 'pull-only',
+        shouldStop: () => this.host.stopRequested(),
         ...(options.allowMassDelete === true ? { allowMassDelete: true } : {}),
       });
       await this.#afterSync();
-      this.#set('idle', this.#summary(report), { lastSync: Date.now(), unsent: report.unsent });
+      this.#set('idle', this.#summary(report), {
+        lastSync: Date.now(),
+        unsent: report.unsent,
+        skipped: report.skipped,
+      });
       if (options.manual === true) this.host.notify(`Obsy: ${this.#summary(report)}`);
       return report;
     } catch (error) {
@@ -278,17 +386,28 @@ export class SyncService {
         `pull only: ${report.unsent} local change${report.unsent === 1 ? '' : 's'} not sent`,
       );
     else if (!report.settled) parts.push('not settled yet, will retry');
+    if (report.skipped > 0) {
+      parts.push(
+        `${report.skipped} file${report.skipped === 1 ? '' : 's'} over the size limit left out`,
+      );
+    }
     const text = parts.length === 0 ? 'Up to date' : parts.join(', ');
     return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
   }
 
   async #failed(error: unknown, options: RunOptions): Promise<null> {
+    if (error instanceof SyncStopped) {
+      // Its state is saved; the next sync, when the app is back, goes on.
+      await this.#afterSync().catch(() => undefined);
+      this.#set('idle', 'Stopped while Obsidian was in the background; continues when it is back.');
+      return null;
+    }
     if (error instanceof SafetyRailError) {
       this.host.saveDevice({ ...this.host.device(), autoSync: false });
       this.#set('paused', `Stopped: ${error.message}.`);
       const where =
         error.rail === 'local-deletes'
-          ? 'on this device (they go to the vault trash)'
+          ? 'on this device (as your Obsidian setting for deleted files says)'
           : 'in the bucket (history keeps them)';
       const yes = await this.host.ask({
         title: 'Obsy stopped a sync',
@@ -359,7 +478,13 @@ export class SyncService {
   verify(): Promise<VerifyReport> {
     return this.#exclusive(async () => {
       await this.host.saveOpenNotes();
-      return verifyLocal(this.host.storage(), this.host.env, this.host.files);
+      const max = maxFileSizeBytes(this.host.device());
+      return verifyLocal(
+        this.host.storage(),
+        this.host.env,
+        this.host.files,
+        max === undefined ? {} : { maxFileSize: max },
+      );
     });
   }
 }

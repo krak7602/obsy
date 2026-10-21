@@ -15,6 +15,7 @@ export { RemoteVault, withRetry, type ClaimResult } from './remote';
 export {
   SafetyRailError,
   SyncEngine,
+  SyncStopped,
   type SafetyRails,
   type SyncEngineOptions,
   type SyncReport,

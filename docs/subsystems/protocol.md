@@ -10,7 +10,7 @@ updated: 2026-10-21
 
 Status:
 
-- **Existing behavior** (phases 1 and 2): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`) with pull-only runs and safety rails, bucket access (`RemoteVault`), checkpoints, `verifyLocal`, and a minimal agent writer (`AgentWriter.appendLine`) in `@obsy/core`. The [simulator](../runbooks/simulator.md) checks them.
+- **Existing behavior** (phases 1 and 2): the layout keys, records and their strict parsers, path keys, conflict copy names, and the commit rules in `@obsy/protocol`; the sync engine (`SyncEngine`) with pull-only runs, safety rails, stops at safe points, and a download size limit, bucket access (`RemoteVault`), checkpoints, `verifyLocal`, and a minimal agent writer (`AgentWriter.appendLine`) in `@obsy/core`. The [simulator](../runbooks/simulator.md) checks them.
 - **Accepted design, not implemented:** proposals, presence, device records, GC, the `obsy verify` and `obsy export` commands, restore, and the epoch bump tool.
 
 The bucket orders every change by itself. Every writer tries to create the next numbered log entry with a conditional create. Exactly one succeeds; the others re-read, rebase, and retry. The provider requirements for this are on [Storage adapters](storage.md). The reasons are in [The bucket is the sequencer](../decisions/2026-10-19-bucket-as-sequencer.md).
@@ -121,6 +121,8 @@ Existing behavior. `SyncEngine.sync()` (`packages/core/src/engine.ts`) runs on o
 - **Text** is decoded as strict UTF-8 for merges. A leading byte order mark stays in the text, so a merged note keeps it.
 - **Pull-only runs.** `sync({ pullOnly: true })` does everything up to the commit: it catches up and reconciles, so remote changes reach the device and are merged into local edits, but it sends nothing. `SyncReport.unsent` counts the ops it held back. A device joining an existing vault starts this way ([plugin](obsidian-plugin.md#connect-and-join)). A pending claim from an earlier run is still re-sent, so its outcome becomes definite.
 - **Safety rails** (`SyncEngineOptions.rails`, off unless set). Before a pass changes anything, the engine counts the files it would delete on the device (remote deletes of unchanged local files) and in the bucket (synced files missing locally). It throws `SafetyRailError` when either count is more than `maxFiles` (default 50), or at least `minFiles` (default 10) and more than `maxFraction` (default 0.2) of the files. With `emptyVault` (default on), a run that would send changes also stops when the device has no files at all but synced files that the head still has. `sync({ allowMassDelete: true })` skips the rails for one run, after the user confirms.
+- **Stops at safe points.** `sync({ shouldStop })` checks `shouldStop` before each pass, each blob download, each upload, and the claim. When it returns true, the engine saves its state and throws `SyncStopped`; the next sync goes on from there. The plugin uses it when iOS is about to suspend the app.
+- **Download size limit** (`SyncEngineOptions.maxFileSize`, off unless set). A head file larger than the limit that the device does not hold yet is not downloaded, and `SyncReport.skipped` counts it. A local file at its path, synced or not, moves to a conflict copy name as it would for a downloaded file, and is sent. Files the device already syncs, and its own files, sync at any size: leaving out a file the device holds could be read as a delete.
 
 `AgentWriter.appendLine(path, line)` is the phase 1 agent operation: read the head, append a line, commit with `baseRev` equal to the head revision, and on a lost claim read the new head and compute again. An agent never merges.
 
@@ -137,13 +139,14 @@ Any client may write `checkpoints/<seq>.json.gz` after applying `seq`; creation 
 ### Integrity and recovery
 
 - Every blob is verified against its SHA-256 when written and read.
-- `verifyLocal(storage, env, local)` (existing behavior) reads the head from the newest checkpoint and the log, and compares every local file with it: missing files, extra files, content differences, and paths that differ only in case or Unicode form. It changes nothing. The plugin's **Verify** uses it; the `obsy verify` command will too.
+- `verifyLocal(storage, env, local)` (existing behavior) reads the head from the newest checkpoint and the log, and compares every local file with it: missing files, extra files, content differences, and paths that differ only in case or Unicode form. With `maxFileSize`, head files over the limit that are not on the device are counted as skipped, not missing. It changes nothing. The plugin's **Verify** uses it; the `obsy verify` command will too.
 - History is the log plus immutable blobs. Restoring a file or the whole vault to an earlier `seq` writes new commits; nothing is rewritten.
 - `vault.json` `epoch` is bumped after any out-of-band repair, forcing every device to reconcile by hash.
 - `obsy export` writes a plain folder copy of any `seq` to another location, so recovery never depends on obsy itself.
 
 ## History
 
+- 2026-10-21: Stops at safe points and a download size limit added for mobile (phase 3).
 - 2026-10-21: Pull-only runs, safety rails, and `verifyLocal` added for the desktop plugin; text decoding keeps a byte order mark.
 - 2026-10-20: Records, commit rules, and the sync engine implemented in phase 1. Checkpoints are uncompressed JSON in format 1. Every op's `baseRev` must equal the current revision; path keys are checked per commit.
 - 2026-10-19: Bucket-sequenced protocol accepted, replacing the Durable Object version authority proposed in the [research](../learning/sync-design-research.md). Content moved from the former `DESIGN.md`.

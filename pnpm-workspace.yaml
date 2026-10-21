@@ -16,6 +16,7 @@ catalog:
   obsidian: 1.14.4
   rolldown: 1.2.14 # Match the version from `vp toolchain`
   typescript: 7.0.2
+  uqr: 0.1.3 # MIT; QR codes for pairing in the plugin
   vite-plus: 1.3.0
 
 # Obsidian review rules run on ESLint and typescript-eslint, which do not

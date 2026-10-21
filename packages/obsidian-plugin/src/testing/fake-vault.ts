@@ -167,6 +167,22 @@ export class FakeVault implements VaultPort {
     return Promise.resolve();
   }
 
+  /** Calls of `appendBinary`, for tests. */
+  appends = 0;
+
+  appendBinary(path: string, bytes: Uint8Array): Promise<void> {
+    this.before('appendBinary:atomic', path);
+    const f = this.#files.get(pathKey(path));
+    if (f === undefined) return Promise.reject(new Error(`ENOENT ${path}`));
+    const joined = new Uint8Array(f.bytes.length + bytes.length);
+    joined.set(f.bytes);
+    joined.set(bytes, f.bytes.length);
+    this.#files.set(pathKey(path), { path: f.path, bytes: joined, mtime: this.#tick() });
+    this.appends++;
+    this.events.push(path);
+    return Promise.resolve();
+  }
+
   rename(from: string, to: string): Promise<void> {
     this.before('rename:atomic', from);
     const f = this.#files.get(pathKey(from));

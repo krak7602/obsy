@@ -196,6 +196,27 @@ describe('VaultLocalFiles', () => {
     expect(files.twins).toEqual(['a.md']);
   });
 
+  it('writes large files in pieces through a temporary file', async () => {
+    const vault = new FakeVault();
+    const files = new VaultLocalFiles(vault, { chunkBytes: 4 });
+    // Bytes 0xf5 to 0xff never occur in UTF-8, so these are binary files.
+    const big = new Uint8Array(Array.from({ length: 10 }, (_, i) => 0xf5 + (i % 11)));
+    expect(await files.write('img.bin', big, null)).toBe(true);
+    expect(vault.appends).toBe(2);
+    expect(await files.read('img.bin')).toEqual(big);
+    const next = big.map((b) => (b === 0xff ? 0xf5 : b + 1));
+    expect(await files.write('img.bin', next, await hashContent(big))).toBe(true);
+    expect(await files.read('img.bin')).toEqual(next);
+    expect(vault.paths()).toEqual(['img.bin']);
+    // A user change while the temporary file is written: nothing replaced.
+    vault.before = (call) => {
+      if (call === 'appendBinary:atomic') vault.userWrite('img.bin', new Uint8Array([0xff]));
+    };
+    expect(await files.write('img.bin', big, await hashContent(next))).toBe(false);
+    expect(await files.read('img.bin')).toEqual(new Uint8Array([0xff]));
+    expect(vault.paths()).toEqual(['img.bin']);
+  });
+
   it('trashes leftover temporary files', async () => {
     const { vault, files } = setup();
     vault.userWrite(`a.md${TEMP_SUFFIX}`, 'partial');

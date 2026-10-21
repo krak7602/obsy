@@ -45,6 +45,13 @@ export interface SyncEngineOptions {
   readonly checkpointEvery?: number;
   /** Stop before mass deletes or when the local files look gone. Off when not set. */
   readonly rails?: SafetyRails;
+  /**
+   * The largest file, in bytes, that this device downloads when it does not
+   * hold the file yet. Such a head file is left out, and a local file at its
+   * path yields to a conflict copy name. Files the device already syncs, and
+   * its own files, sync at any size. No limit when not set.
+   */
+  readonly maxFileSize?: number;
 }
 
 /**
@@ -71,6 +78,21 @@ export interface SyncRunOptions {
   readonly pullOnly?: boolean;
   /** The user confirmed the deletes that tripped a rail: do not check the rails. */
   readonly allowMassDelete?: boolean;
+  /**
+   * Checked before each pass, download, upload, and claim. When it returns
+   * true, the sync saves its state and throws `SyncStopped`. For example,
+   * iOS is about to suspend the app.
+   */
+  readonly shouldStop?: () => boolean;
+}
+
+/** A sync stopped at a safe point because `shouldStop` returned true. Its state is saved. */
+export class SyncStopped extends Error {
+  override readonly name = 'SyncStopped';
+
+  constructor() {
+    super('The sync stopped at a safe point');
+  }
 }
 
 /**
@@ -106,6 +128,8 @@ export interface SyncReport {
   readonly conflictCopies: number;
   /** Ops that a pull-only sync did not send. */
   readonly unsent: number;
+  /** Head files left out because of `maxFileSize`, in the last pass. */
+  readonly skipped: number;
   /** True when local files and the head agree at the end. */
   readonly settled: boolean;
 }
@@ -186,7 +210,10 @@ export class SyncEngine {
 
     const synced = new Map(Object.entries(state.synced));
     const intents = new Map(Object.entries(state.intents ?? {}));
-    const counters = { commits: 0, localChanges: 0, conflictCopies: 0, unsent: 0 };
+    const counters = { commits: 0, localChanges: 0, conflictCopies: 0, unsent: 0, skipped: 0 };
+    const stop = (): void => {
+      if (run.shouldStop?.() === true) throw new SyncStopped();
+    };
     let pendingClaim: PendingClaim | null = state.pending;
     const save = async (pending: PendingClaim | null = pendingClaim): Promise<void> => {
       pendingClaim = pending;
@@ -213,6 +240,7 @@ export class SyncEngine {
 
     const maxPasses = this.#options.maxPasses ?? 20;
     for (let pass = 0; pass < maxPasses; pass++) {
+      stop();
       await this.#remote.catchUp(manifest);
       const reconciler = new Reconciler(
         this.#options,
@@ -235,6 +263,7 @@ export class SyncEngine {
       }
       counters.localChanges += reconciler.localChanges;
       counters.conflictCopies += reconciler.conflictCopies;
+      counters.skipped = reconciler.skipped;
       await save(null);
       if (ops.length === 0) {
         if (reconciler.localChanges === 0) return { ...counters, settled: true };
@@ -246,12 +275,13 @@ export class SyncEngine {
         continue;
       }
 
-      const commit = await this.#prepare(manifest, ops);
+      const commit = await this.#prepare(manifest, ops, stop);
       if (commit === null) continue;
       // Never send a commit that breaks the rules: check it on a copy first.
       manifest.clone().apply(commit);
       const body = JSON.stringify(commit);
       const pending: PendingClaim = { seq: commit.seq, body, opId: commit.opId };
+      stop();
       await save(pending);
       const result = await this.#remote.claim(commit.seq, body, commit.opId);
       if (result.won) {
@@ -318,9 +348,10 @@ export class SyncEngine {
   }
 
   /** Uploads content and builds the commit. Returns null when local files changed meanwhile. */
-  async #prepare(manifest: Manifest, ops: Op[]): Promise<Commit | null> {
+  async #prepare(manifest: Manifest, ops: Op[], stop: () => void): Promise<Commit | null> {
     for (const op of ops) {
       if (op.type !== 'put') continue;
+      stop();
       const bytes = await this.#options.local.read(op.path);
       if (bytes === null || (await hashContent(bytes)) !== op.hash) return null;
       await this.#remote.putBlob(bytes, op.hash);
@@ -372,6 +403,9 @@ interface Untracked {
 class Reconciler {
   localChanges = 0;
   conflictCopies = 0;
+  skipped = 0;
+  /** Head files over the size limit that the device does not hold. */
+  readonly #skippedHead = new Set<string>();
   /** Current local files by path key. Updated by every local change. */
   readonly #local = new Map<string, LocalFile>();
   /** Current local path of each synced file. */
@@ -400,6 +434,7 @@ class Reconciler {
 
   async run(): Promise<Op[]> {
     for (const file of await this.options.local.list()) this.#local.set(pathKey(file.path), file);
+    if (this.options.maxFileSize !== undefined) this.#applySizeLimit(this.options.maxFileSize);
     this.#matchSynced();
     const rails = this.options.rails;
     if (rails !== undefined && this.runOptions.allowMassDelete !== true) this.#checkRails(rails);
@@ -453,6 +488,16 @@ class Reconciler {
         this.#paths.set(fileId, chosen.path);
       }
     }
+  }
+
+  // ------------------------------------------------------------ size limit
+
+  /** Marks head files over the limit that the device does not hold: they are not downloaded. */
+  #applySizeLimit(max: number): void {
+    for (const [fileId, h] of this.head.liveFiles()) {
+      if (!this.synced.has(fileId) && h.size > max) this.#skippedHead.add(fileId);
+    }
+    this.skipped = this.#skippedHead.size;
   }
 
   // ------------------------------------------------------------ safety rails
@@ -550,6 +595,7 @@ class Reconciler {
   async #blob(hash: ContentHash): Promise<Uint8Array> {
     let bytes = this.#blobs.get(hash);
     if (bytes === undefined) {
+      if (this.runOptions.shouldStop?.() === true) throw new SyncStopped();
       bytes = await this.remote.getBlob(hash);
       this.#blobs.set(hash, bytes);
     }
@@ -776,6 +822,16 @@ class Reconciler {
       if (this.synced.has(fileId)) continue;
       const key = pathKey(h.path);
       const occupant = this.#local.get(key);
+      if (this.#skippedHead.has(fileId)) {
+        // Not downloaded. A local file at its path yields to a conflict copy
+        // name, as it would to a downloaded file, so that it can be sent.
+        if (occupant !== undefined && this.#untracked.has(key)) {
+          await this.#yieldUntracked(key, { fileId, rev: h.rev });
+        } else if (occupant !== undefined) {
+          await this.#makeRoom(h.path);
+        }
+        continue;
+      }
       if (occupant === undefined) {
         await this.#write(h.path, await this.#blob(h.hash), null);
         this.#paths.set(fileId, h.path);

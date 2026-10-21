@@ -38,5 +38,6 @@ The prior art for this strategy (Dropbox CanopyCheck and Trinity, TigerBeetle VO
 
 - 2026-10-19: Invariants and test strategy accepted, from the former `DESIGN.md`.
 - 2026-10-20: Deterministic simulator implemented ([results](../learning/simulator-phase1.md)).
+- 2026-10-21: Simulator check that no device deletes in the bucket a file it keeps (phase 3).
 - 2026-10-21: Vault adapter tests and the desktop test added for the plugin ([phase 2](../learning/desktop-plugin-phase2.md)).
 - 2026-10-20: Storage conformance suite and race harness implemented ([storage spike](../learning/storage-spike.md)). First merge unit, property, and oracle tests added in the phase 0 merge spike ([merge spike](../learning/merge-spike.md)).

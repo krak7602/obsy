@@ -39,6 +39,11 @@ async function device(storage: MemoryStorage, name: string, factory: IDBFactory)
       autoSync: true,
     } as DeviceSettings,
   };
+  const secrets = new Map([
+    ['obsy-key', 'AKIDEXAMPLE'],
+    ['obsy-secret', 'secret-example'],
+  ]);
+  const stop = { requested: false };
   const host: Device['host'] = {
     questions: [],
     answers: [],
@@ -59,6 +64,22 @@ async function device(storage: MemoryStorage, name: string, factory: IDBFactory)
     store,
     env: new SeededEnvironment(name.length),
     saveOpenNotes: () => Promise.resolve(),
+    credentials: () => {
+      const accessKeyId = secrets.get(current.settings.accessKeyIdSecret);
+      const secretAccessKey = secrets.get(current.settings.secretAccessKeySecret);
+      if (accessKeyId === undefined || secretAccessKey === undefined) throw new Error('no secret');
+      return { accessKeyId, secretAccessKey };
+    },
+    storeCredentials: (credentials) => {
+      const names = {
+        accessKeyIdSecret: `obsy-local${name}-access-key-id`,
+        secretAccessKeySecret: `obsy-local${name}-secret-access-key`,
+      };
+      secrets.set(names.accessKeyIdSecret, credentials.accessKeyId);
+      secrets.set(names.secretAccessKeySecret, credentials.secretAccessKey);
+      return names;
+    },
+    stopRequested: () => stop.requested,
     ask(question) {
       this.questions.push(question);
       return Promise.resolve(this.answers.shift() ?? false);
@@ -203,5 +224,56 @@ describe('SyncService queue', () => {
     };
     await Promise.all([mac.service.run(), mac.service.run({ manual: true }), mac.service.verify()]);
     expect(most).toBe(1);
+  });
+});
+
+describe('SyncService pairing and stops', () => {
+  it('pairs a second device with a code', async () => {
+    const { mac, phone } = await twoDevices();
+    mac.vault.userWrite('a.md', 'a\n');
+    mac.host.answers.push(true);
+    await mac.service.connect();
+    const code = mac.service.pairingCode();
+    phone.host.current.settings = { ...DEFAULT_SETTINGS };
+    phone.host.answers.push(true, true);
+    await phone.service.joinWithCode(code);
+    expect(phone.host.questions.map((q) => q.title)).toEqual([
+      'Join with this pairing code?',
+      'Join the vault in the bucket?',
+    ]);
+    expect(phone.host.questions[0]?.lines.join(' ')).not.toContain('secret-example');
+    expect(phone.host.current.settings).toMatchObject({
+      endpoint: 'https://bucket.example',
+      accessKeyIdSecret: 'obsy-localphone-access-key-id',
+      vaultId: mac.host.current.settings.vaultId,
+    });
+    expect(phone.host.current.device.mode).toBe('pull-only');
+    expect(phone.vault.paths()).toEqual(['a.md']);
+  });
+
+  it('refuses a code for another vault than the one at the prefix', async () => {
+    const { mac, phone } = await twoDevices();
+    mac.host.answers.push(true);
+    await mac.service.connect();
+    const code = mac.service.pairingCode().replace(/.$/, '');
+    phone.host.answers.push(true, true);
+    await phone.service.joinWithCode(code);
+    expect(phone.host.current.device.mode).toBe('off');
+  });
+
+  it('stops at a safe point when asked, and the next run finishes', async () => {
+    const { mac, phone } = await twoDevices();
+    for (let i = 0; i < 4; i++) mac.vault.userWrite(`n${i}.md`, `${i}\n`);
+    mac.host.answers.push(true);
+    await mac.service.connect();
+    phone.host.answers.push(true);
+    let calls = 0;
+    phone.host.stopRequested = () => ++calls > 3;
+    await phone.service.connect();
+    expect(phone.service.status.detail).toContain('background');
+    expect(phone.vault.paths().length).toBeLessThan(4);
+    phone.host.stopRequested = () => false;
+    await phone.service.run();
+    expect(phone.vault.paths()).toHaveLength(4);
   });
 });
