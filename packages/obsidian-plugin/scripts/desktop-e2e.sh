@@ -19,6 +19,8 @@ if pgrep -f -- '--remote-debugging-port=19223' >/dev/null; then
 fi
 
 (cd "$PACKAGE_DIR" && pnpm run build)
+# The agent step runs the obsy command.
+(cd "$PACKAGE_DIR/../cli" && pnpm run build)
 bash "$S3_SCRIPT" start
 trap 'bash "$S3_SCRIPT" stop' EXIT
 (cd "$PACKAGE_DIR" && pnpm exec vp test --config vite.e2e.config.ts)

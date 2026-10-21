@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
+import { VaultAdmin, VaultAgent, readPresence } from '@obsy/agent';
 import { RemoteVault, webEnvironment, type SyncReport, type VerifyReport } from '@obsy/core';
 import { LOG_PREFIX, Manifest, type Storage } from '@obsy/protocol';
 import { S3Storage } from '@obsy/storage-s3';
@@ -36,6 +37,7 @@ const pluginFiles = [
   join(pluginDir, '..', '..', 'manifest.json'),
 ];
 const binary = process.env['OBSY_E2E_OBSIDIAN'] ?? DEFAULT_BINARY;
+const cliBinary = fileURLToPath(new URL('../../cli/dist/obsy.mjs', import.meta.url));
 const ready = existsSync(envFile) && existsSync(binary) && existsSync(pluginFiles[0] as string);
 
 /** Helpers available to every page script. `p` is the obsy plugin. */
@@ -154,6 +156,7 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
   let storage: S3Storage;
   let fileCount = 0;
   let credentials: string[] = [];
+  let cliEnv: Record<string, string> = {};
 
   beforeAll(async () => {
     process.loadEnvFile(envFile);
@@ -166,6 +169,14 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
       secretAccessKey: env['OBSY_S3_LOCAL_SECRET_ACCESS_KEY'] as string,
     };
     storage = new S3Storage({ ...settings, prefix });
+    cliEnv = {
+      OBSY_S3_ENDPOINT: settings.endpoint,
+      OBSY_S3_BUCKET: settings.bucket,
+      OBSY_S3_REGION: settings.region,
+      OBSY_S3_PREFIX: prefix,
+      OBSY_S3_ACCESS_KEY_ID: settings.accessKeyId,
+      OBSY_S3_SECRET_ACCESS_KEY: settings.secretAccessKey,
+    };
     endpoint = settings.endpoint;
     credentials = [settings.accessKeyId, settings.secretAccessKey];
 
@@ -632,6 +643,119 @@ describe.skipIf(!ready)('desktop plugin in Obsidian', () => {
     expect(ids.size).toBe(count);
     note(
       `- Obsidian killed as soon as a 24 MiB blob reached the bucket (blob seen: ${blobAtKill ? 'yes' : 'no'}; commit made: ${commitAtKill ? 'yes' : 'no'}), and as soon as its temporary download file appeared on the other device (temporary file seen: ${tempAtKill ? 'yes' : 'no'}; file complete: ${downloadedAtKill ? 'yes' : 'no'}): after a restart the file arrived once, intact, with no leftover temporary file and no repeated commit`,
+    );
+  });
+
+  it('lets agents write next to a person typing, and the owner review proposals', async () => {
+    const path = at('Daily/2026-10-21.md');
+    const env = webEnvironment();
+    const agent = (mode: 'propose' | 'ignore'): VaultAgent =>
+      new VaultAgent({ storage, env, actor: { id: 'planner', run: runId }, presence: { mode } });
+    await run(
+      a,
+      'await app.vault.create(args.path, "# 2026-10-21\\n\\n## Plan\\n- write\\n\\n## Agent\\n"); return null;',
+      { path },
+    );
+    await sync(a);
+    await sync(b);
+
+    // B types in the open note without saving: B's presence record says so.
+    await run(
+      b,
+      'const leaf = app.workspace.getLeaf("tab"); await leaf.openFile(file(args.path)); await sleep(500); const e = view(args.path).editor; e.replaceRange("typed on B\\n", { line: 1, ch: 0 }); e.setCursor({ line: 1, ch: 5 }); return null;',
+      { path },
+    );
+    let presence = await readPresence(storage, env);
+    for (let i = 0; i < 50 && !presence.some((r) => r.path === path); i++) {
+      await sleep(200);
+      presence = await readPresence(storage, env);
+    }
+    expect(presence.find((r) => r.path === path)?.device).toBe('desktop-b');
+
+    // An agent that proposes while someone edits; one that commits anyway.
+    const deferred = await agent('propose').appendToSection(path, ['Agent'], ['- 09:00 deferred']);
+    expect(deferred).toMatchObject({ status: 'proposed', reason: 'editing' });
+    const appended = await agent('ignore').appendToSection(path, ['Agent'], ['- 10:00 agent']);
+    if (appended.status !== 'committed') throw new Error(`append: ${appended.status}`);
+    await sync(b);
+    const open = await run<{ text: string; cursor: { line: number; ch: number } }>(
+      b,
+      'const v = view(args.path); return { text: v.editor.getValue(), cursor: v.editor.getCursor() };',
+      { path },
+    );
+    expect(open.text).toBe(
+      '# 2026-10-21\ntyped on B\n\n## Plan\n- write\n\n## Agent\n- 10:00 agent\n',
+    );
+    expect(open.cursor).toEqual({ line: 1, ch: 5 });
+
+    // The owner undoes the agent's append; the person's typing stays.
+    const owner = new VaultAdmin({ storage, env, actor: { kind: 'device', id: 'e2e-owner' } });
+    expect(await owner.undo(appended.seq)).toMatchObject({ status: 'committed' });
+    await sync(b);
+    await sync(a);
+    expect(await read(b, path)).toBe('# 2026-10-21\ntyped on B\n\n## Plan\n- write\n\n## Agent\n');
+
+    // A block the agent owns; A edits inside it, so the next change is a proposal.
+    const block = await agent('ignore').replaceBlock(path, 'weather', 'Sunny', {
+      insert: { section: ['Plan'] },
+    });
+    expect(block.status).toBe('committed');
+    await sync(a);
+    await edit(a, path, 'Sunny', 'Sunny, edited on A');
+    await sync(a);
+    const edited = await agent('ignore').replaceBlock(path, 'weather', 'Rain');
+    expect(edited).toMatchObject({ status: 'proposed', reason: 'block-edited' });
+
+    // The owner on A reviews in the modal: accepts the first, rejects the second.
+    await sync(a);
+    expect(await status(a)).toMatchObject({ proposals: 2 });
+    await run(a, 'await p.reviewProposals(); return null;');
+    const shown = await run<string>(
+      a,
+      'await sleep(300); return document.querySelector(".modal-container .obsy-diff")?.textContent ?? "";',
+    );
+    expect(shown).toContain('- 09:00 deferred');
+    await run(a, 'await click("Accept"); await sleep(200); await click("Reject"); return null;');
+    for (let i = 0; i < 100; i++) {
+      if ((await run<number | null>(a, 'return p.service.status.proposals;')) === 0) break;
+      await sleep(200);
+    }
+    await run(
+      a,
+      'document.querySelector(".modal-container .modal-close-button")?.click(); return null;',
+    );
+    expect(await owner.openProposals()).toEqual([]);
+    const afterReview = await read(a, path);
+    expect(afterReview).toContain('## Agent\n- 09:00 deferred\n');
+    expect(afterReview).toContain('Sunny, edited on A');
+
+    // The obsy command appends too.
+    const out = execFileSync(
+      process.execPath,
+      [
+        cliBinary,
+        'append',
+        path,
+        '--section',
+        'Agent',
+        '--presence',
+        'ignore',
+        '--',
+        '- from the CLI',
+      ],
+      { env: { ...process.env, ...cliEnv, OBSY_AGENT: 'cli-agent' }, encoding: 'utf8' },
+    );
+    expect(out).toMatch(/^committed: /);
+    await sync(a);
+    await sync(b);
+    for (const page of [a, b]) {
+      const text = await read(page, path);
+      expect(text).toContain('typed on B\n');
+      expect(text).not.toContain('- 10:00 agent');
+      expect(text).toContain('- 09:00 deferred\n- from the CLI\n');
+    }
+    note(
+      "- Agents: a person typing in an open note made a presence record; an agent in propose mode proposed instead of writing, and an agent that wrote anyway merged into the open editor with the typing and cursor kept; undo removed the agent's line and kept the typing; an edit inside the agent's block made its next change a proposal; the owner accepted one proposal (merged with later edits) and rejected one in the review dialog; the obsy command appended a line",
     );
   });
 
